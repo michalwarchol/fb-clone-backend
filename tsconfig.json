@@ -10,7 +10,7 @@
     ],
     "sourceMap": true,
     "outDir": "./dist",
-    "moduleResolution": "node",
+    "moduleResolution": "Node",
     "removeComments": true,
     "noImplicitAny": true,
     "strictNullChecks": true,
@@ -25,6 +25,7 @@
     "emitDecoratorMetadata": true,
     "experimentalDecorators": true,
     "resolveJsonModule": true,
+    "skipLibCheck": true,
     "baseUrl": "."
   },
   "exclude": [
