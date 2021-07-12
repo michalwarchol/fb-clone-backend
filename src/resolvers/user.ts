@@ -10,6 +10,7 @@ import {
   Resolver,
 } from "type-graphql";
 import bcrypt from "bcrypt";
+import { EntityManager } from "@mikro-orm/postgresql";
 
 @InputType()
 class Credentials {
@@ -63,27 +64,30 @@ export class UserResolver {
 
     const salt = await bcrypt.genSalt(10);
     const hash = await bcrypt.hash(credentials.password, salt);
-    const user = em.create(User, {
-      username: credentials.username,
-      password: hash,
-    });
-
-    try{
-        await em.persistAndFlush(user);
-    }catch(err){
-        if(err.code==="23505"){
-            //duplicate user error
-            return {
-                errors: [
-                  { field: "username", message: "username already taken" },
-                ],
-              };
-        }
+    let user;
+    try {
+      const result = await (em as EntityManager)
+        .createQueryBuilder(User)
+        .getKnexQuery()
+        .insert({
+          username: credentials.username,
+          password: hash,
+          created_at: new Date(),
+          updated_at: new Date(),
+        })
+        .returning(["_id", "username", "created_at as createdAt", "updated_at as updatedAt", "password"]);
+      user = result[0];
+    } catch (err) {
+      console.log(err)
+      if (err.detail.includes("already exists")) {
+        //duplicate user error
+        return {
+          errors: [{ field: "username", message: "username already taken" }],
+        };
+      }
     }
     req.session.userId = user._id;
-    return {
-      user,
-    };
+    return {user};
   }
 
   @Mutation(() => UserResponse)
@@ -113,7 +117,7 @@ export class UserResolver {
         ],
       };
     }
-    
+
     req.session.userId = user._id;
 
     return {
