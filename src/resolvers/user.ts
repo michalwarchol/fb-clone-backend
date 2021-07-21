@@ -7,10 +7,12 @@ import {
   InputType,
   Mutation,
   ObjectType,
+  Query,
   Resolver,
 } from "type-graphql";
 import bcrypt from "bcrypt";
 import { EntityManager } from "@mikro-orm/postgresql";
+import { COOKIE_NAME } from "../constants";
 
 @InputType()
 class Credentials {
@@ -41,6 +43,15 @@ class UserResponse {
 
 @Resolver()
 export class UserResolver {
+  @Query(() => User, { nullable: true })
+  async loggedUser(@Ctx() { req, em }: MyContext) {
+    if (!req.session.userId) {
+      return null;
+    }
+    const user = await em.findOne(User, { _id: req.session.userId });
+    return user;
+  }
+
   @Mutation(() => UserResponse)
   async register(
     @Arg("credentials") credentials: Credentials,
@@ -75,10 +86,16 @@ export class UserResolver {
           created_at: new Date(),
           updated_at: new Date(),
         })
-        .returning(["_id", "username", "created_at as createdAt", "updated_at as updatedAt", "password"]);
+        .returning([
+          "_id",
+          "username",
+          "created_at as createdAt",
+          "updated_at as updatedAt",
+          "password",
+        ]);
       user = result[0];
     } catch (err) {
-      console.log(err)
+      console.log(err);
       if (err.detail.includes("already exists")) {
         //duplicate user error
         return {
@@ -87,7 +104,7 @@ export class UserResolver {
       }
     }
     req.session.userId = user._id;
-    return {user};
+    return { user };
   }
 
   @Mutation(() => UserResponse)
@@ -123,5 +140,19 @@ export class UserResolver {
     return {
       user,
     };
+  }
+
+  @Mutation(() => Boolean)
+  logout(@Ctx() { req, res }: MyContext) {
+    return new Promise((resolve) => {
+      req.session.destroy((err) => {
+        res.clearCookie(COOKIE_NAME);
+        if (err) {
+          resolve(false);
+          return;
+        }
+        resolve(true);
+      });
+    });
   }
 }
