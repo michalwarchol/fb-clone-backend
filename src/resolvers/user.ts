@@ -20,6 +20,9 @@ class Credentials {
   username: string;
 
   @Field()
+  email: string;
+
+  @Field()
   password: string;
 }
 
@@ -57,6 +60,18 @@ export class UserResolver {
     @Arg("credentials") credentials: Credentials,
     @Ctx() { em, req }: MyContext
   ): Promise<UserResponse> {
+    if (
+      /^\w+([-+.']\w+)*@\w+([-.]\w+)*\.\w+([-.]\w+)*$/.test(
+        credentials.email
+      ) == false
+    ) {
+      return {
+        errors: [
+          {field: "email", message: "Email is invalid"},
+        ],
+      }
+    }
+
     if (credentials.username.length < 3) {
       return {
         errors: [
@@ -83,6 +98,7 @@ export class UserResolver {
         .insert({
           username: credentials.username,
           password: hash,
+          email: credentials.email,
           created_at: new Date(),
           updated_at: new Date(),
         })
@@ -109,10 +125,11 @@ export class UserResolver {
 
   @Mutation(() => UserResponse)
   async login(
-    @Arg("credentials") credentials: Credentials,
+    @Arg("username") username: string,
+    @Arg("password") password: string,
     @Ctx() { em, req }: MyContext
   ): Promise<UserResponse> {
-    const user = await em.findOne(User, { username: credentials.username });
+    const user = await em.findOne(User, { username });
     if (!user) {
       return {
         errors: [
@@ -123,7 +140,7 @@ export class UserResolver {
         ],
       };
     }
-    const valid = await bcrypt.compare(credentials.password, user.password);
+    const valid = await bcrypt.compare(password, user.password);
     if (!valid) {
       return {
         errors: [
@@ -154,5 +171,15 @@ export class UserResolver {
         resolve(true);
       });
     });
+  }
+
+  @Mutation(() => Boolean)
+  async forgotPassword(@Arg("email") email: string, @Ctx() { em }: MyContext) {
+    const user = await em.findOne(User, { email });
+    if(!user){
+      return false;
+    }
+    
+    return true;
   }
 }
