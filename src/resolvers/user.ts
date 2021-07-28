@@ -11,10 +11,10 @@ import {
   Resolver,
 } from "type-graphql";
 import bcrypt from "bcrypt";
-import { EntityManager } from "@mikro-orm/postgresql";
 import { COOKIE_NAME, FORGET_PASSWORD_PREFIX } from "../constants";
 import { sendEmail } from "../utils/sendEmail";
-import {v4} from "uuid";
+import { v4 } from "uuid";
+import { getConnection } from "typeorm";
 
 @InputType()
 class Credentials {
@@ -49,18 +49,17 @@ class UserResponse {
 @Resolver()
 export class UserResolver {
   @Query(() => User, { nullable: true })
-  async loggedUser(@Ctx() { req, em }: MyContext) {
+  async loggedUser(@Ctx() { req }: MyContext) {
     if (!req.session.userId) {
       return null;
     }
-    const user = await em.findOne(User, { _id: req.session.userId });
-    return user;
+    return User.findOne({ _id: req.session.userId });
   }
 
   @Mutation(() => UserResponse)
   async register(
     @Arg("credentials") credentials: Credentials,
-    @Ctx() { em, req }: MyContext
+    @Ctx() { req }: MyContext
   ): Promise<UserResponse> {
     if (
       /^\w+([-+.']\w+)*@\w+([-.]\w+)*\.\w+([-.]\w+)*$/.test(
@@ -92,30 +91,44 @@ export class UserResolver {
     const hash = await bcrypt.hash(credentials.password, salt);
     let user;
     try {
-      const result = await (em as EntityManager)
-        .createQueryBuilder(User)
-        .getKnexQuery()
-        .insert({
-          username: credentials.username,
-          password: hash,
-          email: credentials.email,
-          created_at: new Date(),
-          updated_at: new Date(),
-        })
+      const result = await getConnection()
+        .createQueryBuilder()
+        .insert()
+        .into(User)
+        .values([
+          {
+            username: credentials.username,
+            password: hash,
+            email: credentials.email,
+          },
+        ])
         .returning([
           "_id",
           "username",
+          "email",
           "created_at as createdAt",
           "updated_at as updatedAt",
           "password",
-        ]);
-      user = result[0];
+        ])
+        .execute();
+      user = result.raw[0];
     } catch (err) {
-      console.log(err);
-      if (err.detail.includes("already exists")) {
+      if (
+        err.detail.includes("already exists") &&
+        err.detail.includes("username")
+      ) {
         //duplicate user error
         return {
           errors: [{ field: "username", message: "username already taken" }],
+        };
+      }
+      if (
+        err.detail.includes("already exists") &&
+        err.detail.includes("email")
+      ) {
+        //duplicate user error
+        return {
+          errors: [{ field: "email", message: "email already taken" }],
         };
       }
     }
@@ -127,9 +140,9 @@ export class UserResolver {
   async login(
     @Arg("username") username: string,
     @Arg("password") password: string,
-    @Ctx() { em, req }: MyContext
+    @Ctx() { req }: MyContext
   ): Promise<UserResponse> {
-    const user = await em.findOne(User, { username });
+    const user = await User.findOne({ where: { username } });
     if (!user) {
       return {
         errors: [
@@ -176,9 +189,9 @@ export class UserResolver {
   @Mutation(() => Boolean)
   async forgotPassword(
     @Arg("email") email: string,
-    @Ctx() { em, redis }: MyContext
+    @Ctx() { redis }: MyContext
   ) {
-    const user = await em.findOne(User, { email });
+    const user = await User.findOne({ where: { email } });
     if (!user) {
       return false;
     }
@@ -191,17 +204,20 @@ export class UserResolver {
       1000 * 60 * 60 * 24 * 3
     ); //3 days
 
-    await sendEmail(email, `<a href="http://localhost:3000/change-password/${token}">reset password</a>`);
+    await sendEmail(
+      email,
+      `<a href="http://localhost:3000/change-password/${token}">reset password</a>`
+    );
 
     return true;
   }
 
-  @Mutation(()=>UserResponse)
+  @Mutation(() => UserResponse)
   async changePassword(
     @Arg("token") token: string,
     @Arg("newPassword") newPassword: string,
-    @Ctx() {em, redis, req}: MyContext
-  ): Promise<UserResponse>{
+    @Ctx() { redis, req }: MyContext
+  ): Promise<UserResponse> {
     if (newPassword.length < 6) {
       return {
         errors: [
@@ -209,39 +225,41 @@ export class UserResolver {
         ],
       };
     }
-    const userId = await redis.get(FORGET_PASSWORD_PREFIX+token);
-    if(!userId){
+    const userId = await redis.get(FORGET_PASSWORD_PREFIX + token);
+    if (!userId) {
       return {
         errors: [
           {
             field: "token",
-            message: "token expired"
-          }
-        ]
-      }
+            message: "token expired",
+          },
+        ],
+      };
     }
 
-    const user = await em.findOne(User, {_id: parseInt(userId)});
-    if(!user){
+    const user = await User.findOne({ _id: parseInt(userId) });
+    if (!user) {
       return {
         errors: [
           {
             field: "token",
-            message: "user no longer exists"
-          }
-        ]
-      }
+            message: "user no longer exists",
+          },
+        ],
+      };
     }
-    
+
     const salt = await bcrypt.genSalt(10);
-    user.password = await bcrypt.hash(newPassword, salt);
-    em.persistAndFlush(user);
+    await User.update(
+      { _id: user._id },
+      { password: await bcrypt.hash(newPassword, salt) }
+    );
 
-    await redis.del(FORGET_PASSWORD_PREFIX+token);
+    await redis.del(FORGET_PASSWORD_PREFIX + token);
 
     //log in user after change password
     req.session.userId = user._id;
 
-    return {user};
+    return { user };
   }
 }

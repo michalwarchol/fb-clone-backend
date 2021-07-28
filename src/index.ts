@@ -1,8 +1,6 @@
 import "dotenv-safe/config";
 import "reflect-metadata";
-import { MikroORM } from "@mikro-orm/core";
 import { COOKIE_NAME, __prod__ } from "./constants";
-import mikroORMConfig from "./mikro-orm.config";
 import express from "express";
 import { ApolloServer } from "apollo-server-express";
 import { buildSchema } from "type-graphql";
@@ -14,10 +12,21 @@ import session from "express-session";
 import connectRedis from "connect-redis";
 import { MyContext } from "./types";
 import cors from "cors";
+import {createConnection} from "typeorm"
+import { User } from "./entities/User";
+import { Post } from "./entities/Post";
 
 const main = async () => {
-  const orm = await MikroORM.init(mikroORMConfig);
-  await orm.getMigrator().up();
+
+  await createConnection({
+    type: "postgres",
+    database: "fbclone2",
+    username: "postgres",
+    password: process.env.POSTGRESQL_PASSWORD,
+    logging: true,
+    synchronize: true,
+    entities: [Post, User]
+  })
 
   const app = express();
 
@@ -53,7 +62,7 @@ const main = async () => {
       resolvers: [HelloResolver, PostResolver, UserResolver],
       validate: false,
     }),
-    context: ({ req, res }): MyContext => ({ em: orm.em, req, res, redis }),
+    context: ({ req, res }): MyContext => ({ req, res, redis }),
   });
 
   apolloServer.applyMiddleware({
