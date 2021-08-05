@@ -1,5 +1,29 @@
 import { Post } from "../entities/Post";
-import { Arg, Int, Mutation, Query, Resolver } from "type-graphql";
+import {
+  Arg,
+  Ctx,
+  Field,
+  InputType,
+  Int,
+  Mutation,
+  Query,
+  Resolver,
+  UseMiddleware,
+} from "type-graphql";
+import { MyContext } from "src/types";
+import { isAuth } from "../middleware/isAuth";
+
+@InputType()
+class PostInput {
+  @Field()
+  text: string;
+
+  @Field()
+  feeling?: string;
+
+  @Field()
+  activity?: string;
+}
 
 @Resolver()
 export class PostResolver {
@@ -14,22 +38,27 @@ export class PostResolver {
   }
 
   @Mutation(() => Post)
-  async createPost(@Arg("name") name: string): Promise<Post> {
-    return Post.create({ name }).save();
+  @UseMiddleware(isAuth)
+  async createPost(@Arg("input") input: PostInput,
+  @Ctx() {req}: MyContext): Promise<Post> {
+    return Post.create({
+      ...input,
+      creatorId: req.session.userId,
+    }).save();
   }
 
   @Mutation(() => Post, { nullable: true })
   async updatePost(
     @Arg("id") id: number,
-    @Arg("name", () => String, { nullable: true }) name: string
+    @Arg("text", () => String, { nullable: true }) text: string
   ): Promise<Post | null> {
     const post = await Post.findOne({ _id: id });
     if (!post) {
       return null;
     }
 
-    if (typeof name !== "undefined") {
-      await Post.update({_id: id}, {name: name})
+    if (typeof text !== "undefined") {
+      await Post.update({ _id: id }, { text: text });
     }
     return post;
   }
