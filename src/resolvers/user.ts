@@ -4,11 +4,13 @@ import {
   Arg,
   Ctx,
   Field,
+  FieldResolver,
   InputType,
   Mutation,
   ObjectType,
   Query,
   Resolver,
+  Root,
 } from "type-graphql";
 import bcrypt from "bcrypt";
 import { COOKIE_NAME, FORGET_PASSWORD_PREFIX } from "../constants";
@@ -46,8 +48,21 @@ class UserResponse {
   user?: User;
 }
 
-@Resolver()
+@Resolver(User)
 export class UserResolver {
+
+  @FieldResolver(()=>String)
+  email(
+    @Root() user: User,
+    @Ctx() {req}: MyContext
+  ){
+    if(req.session.userId == user._id){
+      return user.email;
+    }
+    return "";
+  }
+
+
   @Query(() => User, { nullable: true })
   async loggedUser(@Ctx() { req }: MyContext) {
     if (!req.session.userId) {
