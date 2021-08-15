@@ -27,9 +27,11 @@ class PostInput {
   activity?: string;
 }
 
+
+
 @ObjectType()
 class PaginatedPosts {
-  @Field(()=> [Post])
+  @Field(() => [Post])
   posts: Post[];
 
   @Field()
@@ -38,7 +40,6 @@ class PaginatedPosts {
 
 @Resolver()
 export class PostResolver {
-
   @Query(() => PaginatedPosts)
   async posts(
     @Arg("limit", () => Int) limit: number,
@@ -49,7 +50,7 @@ export class PostResolver {
 
     const replacements: any[] = [reaLimitPlusOne];
 
-    if(cursor){
+    if (cursor) {
       replacements.push(new Date(parseInt(cursor)));
     }
 
@@ -65,29 +66,16 @@ export class PostResolver {
           ) creator
         from post p
         inner join public.user u on u._id = p."creatorId"
-        ${cursor ? `where p."createdAt" < $2` : ''}
+        ${cursor ? `where p."createdAt" < $2` : ""}
         order by p."createdAt" DESC
         limit $1
-      `, replacements
+      `,
+      replacements
     );
-
-    // const qb = getConnection()
-    //   .getRepository(Post)
-    //   .createQueryBuilder("p")
-    //   .innerJoinAndSelect("p.creator", "u", 'u._id = p."creatorId"')
-    //   .orderBy('p."createdAt"', "DESC")
-    //   .take(reaLimitPlusOne);
-      
-    // if (cursor) {
-    //   qb.where('p."createdAt" < :cursor', {
-    //     cursor: new Date(parseInt(cursor)),
-    //   });
-    // }
-    // const posts = await qb.getMany();
     return {
       posts: posts.slice(0, realLimit),
-      hasMore: posts.length ===reaLimitPlusOne
-    }
+      hasMore: posts.length === reaLimitPlusOne,
+    };
   }
 
   @Query(() => Post, { nullable: true })
@@ -97,8 +85,10 @@ export class PostResolver {
 
   @Mutation(() => Post)
   @UseMiddleware(isAuth)
-  async createPost(@Arg("input") input: PostInput,
-  @Ctx() {req}: MyContext): Promise<Post> {
+  async createPost(
+    @Arg("input") input: PostInput,
+    @Ctx() { req }: MyContext
+  ): Promise<Post> {
     return Post.create({
       ...input,
       creatorId: req.session.userId,
