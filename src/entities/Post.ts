@@ -5,9 +5,11 @@ import {
   CreateDateColumn,
   Entity,
   ManyToOne,
+  OneToMany,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from "typeorm";
+import { Reaction } from "./Reaction";
 import { User } from "./User";
 
 @ObjectType()
@@ -16,6 +18,9 @@ export class Post extends BaseEntity {
   @Field(() => Int)
   @PrimaryGeneratedColumn()
   _id!: number;
+
+  @OneToMany(() => Reaction, reaction=>reaction.post)
+  reactions: Reaction[];
 
   @Field()
   @Column()
