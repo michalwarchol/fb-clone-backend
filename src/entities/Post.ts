@@ -9,6 +9,7 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from "typeorm";
+import { Comment } from "./Comment";
 import { Reaction } from "./Reaction";
 import { User } from "./User";
 
@@ -21,6 +22,9 @@ export class Post extends BaseEntity {
 
   @OneToMany(() => Reaction, reaction=>reaction.post)
   reactions: Reaction[];
+
+  @OneToMany(()=>Comment, comment=>comment.post)
+  comments: Comment[]
 
   @Field()
   @Column()

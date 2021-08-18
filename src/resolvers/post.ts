@@ -45,6 +45,8 @@ export class PostResolver {
     @Arg("limit", () => Int) limit: number,
     @Arg("cursor", () => String, { nullable: true }) cursor: string | null
   ): Promise<PaginatedPosts> {
+
+    
     const realLimit = Math.min(50, limit);
     const reaLimitPlusOne = realLimit + 1;
 
@@ -56,22 +58,23 @@ export class PostResolver {
 
     const posts = await getConnection().query(
       `
-        select p.*, 
-        json_build_object(
-          '_id', u._id,
-          'username', u.username,
-          'email', u.email,
-          'createdAt', u."createdAt",
-          'updatedAt', u."updatedAt"
-          ) creator
-        from post p
-        inner join public.user u on u._id = p."creatorId"
-        ${cursor ? `where p."createdAt" < $2` : ""}
-        order by p."createdAt" DESC
-        limit $1
-      `,
+    select p.*,
+    json_build_object(
+      '_id', u._id,
+      'username', u.username,
+      'email', u.email,
+      'createdAt', u."createdAt",
+      'updatedAt', u."updatedAt"
+      ) creator
+    from post p
+    inner join public.user u on u._id = p."creatorId"
+    ${cursor ? `where p."createdAt" < $2` : ""}
+    order by p."createdAt" DESC
+    limit $1
+    `,
       replacements
     );
+    console.log("posts: ", posts);
     return {
       posts: posts.slice(0, realLimit),
       hasMore: posts.length === reaLimitPlusOne,

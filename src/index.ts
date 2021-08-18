@@ -16,7 +16,9 @@ import {createConnection} from "typeorm"
 import { User } from "./entities/User";
 import { Post } from "./entities/Post";
 import { Reaction } from "./entities/Reaction";
+import {Comment }from "./entities/Comment";
 import { ReactionResolver } from "./resolvers/reaction";
+import { CommentResolver } from "./resolvers/comment";
 
 const main = async () => {
 
@@ -27,7 +29,7 @@ const main = async () => {
     password: process.env.POSTGRESQL_PASSWORD,
     logging: true,
     synchronize: true,
-    entities: [Post, User, Reaction]
+    entities: [Post, User, Reaction, Comment]
   })
 
   const app = express();
@@ -61,7 +63,7 @@ const main = async () => {
 
   const apolloServer = new ApolloServer({
     schema: await buildSchema({
-      resolvers: [HelloResolver, PostResolver, UserResolver, ReactionResolver],
+      resolvers: [HelloResolver, PostResolver, UserResolver, ReactionResolver, CommentResolver],
       validate: false,
     }),
     context: ({ req, res }): MyContext => ({ req, res, redis }),

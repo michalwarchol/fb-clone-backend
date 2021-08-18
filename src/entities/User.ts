@@ -1,6 +1,7 @@
 
 import { Field, Int, ObjectType } from "type-graphql";
 import { BaseEntity, Column, CreateDateColumn, Entity, OneToMany, PrimaryGeneratedColumn, UpdateDateColumn } from "typeorm";
+import { Comment } from "./Comment";
 import { Post } from "./Post";
 import { Reaction } from "./Reaction";
 
@@ -28,6 +29,9 @@ export class User extends BaseEntity {
 
   @OneToMany(() => Reaction, reaction=>reaction.user)
   reactions: Reaction[];
+
+  @OneToMany(()=>Comment, comment=>comment.creator)
+  comments: Comment[]
 
   @Field(()=> String)
   @CreateDateColumn()
