@@ -13,12 +13,14 @@ import connectRedis from "connect-redis";
 import { MyContext } from "./types";
 import cors from "cors";
 import {createConnection} from "typeorm"
+import {S3} from "aws-sdk"
 import { User } from "./entities/User";
 import { Post } from "./entities/Post";
 import { Reaction } from "./entities/Reaction";
 import {Comment }from "./entities/Comment";
 import { ReactionResolver } from "./resolvers/reaction";
 import { CommentResolver } from "./resolvers/comment";
+import { graphqlUploadExpress } from "graphql-upload";
 
 const main = async () => {
 
@@ -61,12 +63,21 @@ const main = async () => {
     })
   );
 
+  const s3 = new S3({
+    accessKeyId: process.env.AWS_ID,
+    secretAccessKey: process.env.AWS_SECRET,
+    region: process.env.AWS_REGION
+  })
+
+  app.use(graphqlUploadExpress({ maxFileSize: 10000 * 20, maxFiles: 10 }));
+
   const apolloServer = new ApolloServer({
     schema: await buildSchema({
       resolvers: [HelloResolver, PostResolver, UserResolver, ReactionResolver, CommentResolver],
       validate: false,
     }),
-    context: ({ req, res }): MyContext => ({ req, res, redis }),
+    context: ({ req, res }): MyContext => ({ req, res, redis, s3 }),
+    uploads: false
   });
 
   apolloServer.applyMiddleware({
