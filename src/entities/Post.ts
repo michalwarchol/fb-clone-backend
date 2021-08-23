@@ -47,6 +47,10 @@ export class Post extends BaseEntity {
   activity!: string;
 
   @Field()
+  @Column({nullable: true})
+  imageId!: string;
+
+  @Field()
   @Column({ type: "int", default: 0 })
   like!: number;
 

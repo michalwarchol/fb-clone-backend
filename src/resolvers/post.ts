@@ -14,6 +14,8 @@ import {
 import { MyContext } from "src/types";
 import { isAuth } from "../middleware/isAuth";
 import { getConnection } from "typeorm";
+import { v4 } from "uuid";
+import { FileUpload, GraphQLUpload } from "graphql-upload";
 
 @InputType()
 class PostInput {
@@ -26,8 +28,6 @@ class PostInput {
   @Field()
   activity?: string;
 }
-
-
 
 @ObjectType()
 class PaginatedPosts {
@@ -45,8 +45,6 @@ export class PostResolver {
     @Arg("limit", () => Int) limit: number,
     @Arg("cursor", () => String, { nullable: true }) cursor: string | null
   ): Promise<PaginatedPosts> {
-
-    
     const realLimit = Math.min(50, limit);
     const reaLimitPlusOne = realLimit + 1;
 
@@ -74,7 +72,6 @@ export class PostResolver {
     `,
       replacements
     );
-    console.log("posts: ", posts);
     return {
       posts: posts.slice(0, realLimit),
       hasMore: posts.length === reaLimitPlusOne,
@@ -89,12 +86,28 @@ export class PostResolver {
   @Mutation(() => Post)
   @UseMiddleware(isAuth)
   async createPost(
+    @Ctx() { req, s3 }: MyContext,
     @Arg("input") input: PostInput,
-    @Ctx() { req }: MyContext
+    @Arg("image", () => GraphQLUpload, {nullable: true}) image: FileUpload
   ): Promise<Post> {
+    let imageId = null;
+    if (image) {
+      imageId = v4();
+      await s3
+        .upload({
+          Bucket: process.env.AWS_BUCKET_NAME,
+          Key: imageId,
+          Body: image.createReadStream()
+        })
+        .promise();
+    }
+
     return Post.create({
-      ...input,
+      text: input.text,
+      activity: input.activity,
+      feeling: input.feeling,
       creatorId: req.session.userId,
+      imageId: imageId ? imageId: ""
     }).save();
   }
 
@@ -122,5 +135,17 @@ export class PostResolver {
     } catch {
       return false;
     }
+  }
+
+  @Query(()=>String)
+  async getImage(
+    @Ctx() { s3 }: MyContext,
+    @Arg("imageId", ()=>String) imageId: string
+  ): Promise<string|null>{
+    const image = s3.getSignedUrl("getObject", {Bucket: process.env.AWS_BUCKET_NAME, Key: imageId});
+    if(!image){
+      return null;
+    }
+    return image;
   }
 }
