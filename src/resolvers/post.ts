@@ -61,6 +61,8 @@ export class PostResolver {
       '_id', u._id,
       'username', u.username,
       'email', u.email,
+      'avatarId', u."avatarId",
+      'bannerId', u."bannerId",
       'createdAt', u."createdAt",
       'updatedAt', u."updatedAt"
       ) creator

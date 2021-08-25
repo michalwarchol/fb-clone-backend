@@ -24,6 +24,14 @@ export class User extends BaseEntity {
   @Column()
   password!: string;
 
+  @Field()
+  @Column({nullable: true})
+  avatarId!: string;
+
+  @Field()
+  @Column({nullable: true})
+  bannerId!: string;
+
   @OneToMany(() => Post, post => post.creator)
   posts: Post[];
 

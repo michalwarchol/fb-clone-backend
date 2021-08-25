@@ -6,6 +6,7 @@ import {
   Field,
   FieldResolver,
   InputType,
+  Int,
   Mutation,
   ObjectType,
   Query,
@@ -17,6 +18,7 @@ import { COOKIE_NAME, FORGET_PASSWORD_PREFIX } from "../constants";
 import { sendEmail } from "../utils/sendEmail";
 import { v4 } from "uuid";
 import { getConnection } from "typeorm";
+import { FileUpload, GraphQLUpload } from "graphql-upload";
 
 @InputType()
 class Credentials {
@@ -40,41 +42,118 @@ class FieldError {
 }
 
 @ObjectType()
+class FullUser {
+  @Field(() => User, { nullable: true })
+  user: User;
+
+  @Field(()=>String, {nullable: true})
+  avatarImage: string|null;
+
+  @Field(()=>String, {nullable: true})
+  bannerImage: string|null;
+}
+
+@ObjectType()
 class UserResponse {
   @Field(() => [FieldError], { nullable: true })
   errors?: FieldError[];
 
-  @Field(() => User, { nullable: true })
-  user?: User;
+  @Field(() => FullUser, { nullable: true })
+  loggedUser?: FullUser;
 }
 
 @Resolver(User)
 export class UserResolver {
-
-  @FieldResolver(()=>String)
-  email(
-    @Root() user: User,
-    @Ctx() {req}: MyContext
-  ){
-    if(req.session.userId == user._id){
+  @FieldResolver(() => String)
+  email(@Root() user: User, @Ctx() { req }: MyContext) {
+    if (req.session.userId == user._id) {
       return user.email;
     }
     return "";
   }
 
-
   @Query(() => User, { nullable: true })
-  async loggedUser(@Ctx() { req }: MyContext) {
+  async getUserById(
+    @Arg("id", () => Int) id: number
+  ): Promise<User | undefined> {
+    return User.findOne({ _id: id });
+  }
+
+  @Mutation(() => String)
+  async uploadImage(
+    @Ctx() { req, s3 }: MyContext,
+    @Arg("image", () => GraphQLUpload, { nullable: true }) image: FileUpload,
+    @Arg("avatarOrBanner", () => String) avatarOrBanner: "avatar" | "banner"
+  ): Promise<string> {
+
+    const user = await User.findOne({_id: req.session.userId});
+
+    if(avatarOrBanner=="avatar"){
+      if(user?.avatarId){
+        s3.deleteObject({
+          Bucket: process.env.AWS_BUCKET_NAME,
+          Key: user?.avatarId
+        }).promise();
+      }
+    }else{
+      if(user?.bannerId){
+        s3.deleteObject({
+          Bucket: process.env.AWS_BUCKET_NAME,
+          Key: user?.bannerId
+        }).promise();
+      }
+    }
+
+    const imageId = v4();
+    await s3
+      .upload({
+        Bucket: process.env.AWS_BUCKET_NAME,
+        Key: imageId,
+        Body: image.createReadStream(),
+      })
+      .promise();
+
+    await User.update(
+      { _id: req.session.userId },
+      avatarOrBanner == "avatar" ? { avatarId: imageId } : { bannerId: imageId }
+    );
+
+    return imageId;
+  }
+
+  @Query(() => FullUser, { nullable: true })
+  async loggedUser(@Ctx() { req, s3 }: MyContext) {
     if (!req.session.userId) {
       return null;
     }
-    return User.findOne({ _id: req.session.userId });
+
+    const user = await User.findOne({ _id: req.session.userId });
+    let avatarImage = null;
+    let bannerImage = null;
+    if(!!user?.avatarId){
+      avatarImage = s3.getSignedUrl("getObject", {
+        Bucket: process.env.AWS_BUCKET_NAME,
+        Key: user.avatarId
+      })
+    }
+    if(!!user?.bannerId){
+      bannerImage = s3.getSignedUrl("getObject", {
+        Bucket: process.env.AWS_BUCKET_NAME,
+        Key: user.bannerId
+      })
+    }
+
+    return {
+      user,
+      avatarImage,
+      bannerImage
+    }
   }
 
   @Mutation(() => UserResponse)
   async register(
     @Arg("credentials") credentials: Credentials,
-    @Ctx() { req }: MyContext
+    @Ctx() { req, s3 }: MyContext
   ): Promise<UserResponse> {
     if (
       /^\w+([-+.']\w+)*@\w+([-.]\w+)*\.\w+([-.]\w+)*$/.test(
@@ -115,12 +194,16 @@ export class UserResolver {
             username: credentials.username,
             password: hash,
             email: credentials.email,
+            avatarId: "",
+            bannerId: ""
           },
         ])
         .returning([
           "_id",
           "username",
           "email",
+          "avatarId",
+          "bannerId",
           "created_at as createdAt",
           "updated_at as updatedAt",
           "password",
@@ -148,14 +231,33 @@ export class UserResolver {
       }
     }
     req.session.userId = user._id;
-    return { user };
+    let avatarImage = null;
+    let bannerImage = null;
+    if(!!user?.avatarId){
+      avatarImage = s3.getSignedUrl("getObject", {
+        Bucket: process.env.AWS_BUCKET_NAME,
+        Key: user.avatarId
+      })
+    }
+    if(!!user?.bannerId){
+      bannerImage = s3.getSignedUrl("getObject", {
+        Bucket: process.env.AWS_BUCKET_NAME,
+        Key: user.bannerId
+      })
+    }
+    return { loggedUser: {
+      user, 
+      avatarImage, 
+      bannerImage
+    } 
+  };
   }
 
   @Mutation(() => UserResponse)
   async login(
     @Arg("username") username: string,
     @Arg("password") password: string,
-    @Ctx() { req }: MyContext
+    @Ctx() { req, s3 }: MyContext
   ): Promise<UserResponse> {
     const user = await User.findOne({ where: { username } });
     if (!user) {
@@ -181,9 +283,27 @@ export class UserResolver {
     }
 
     req.session.userId = user._id;
+    let avatarImage = null;
+    let bannerImage = null;
+    if(!!user?.avatarId){
+      avatarImage = s3.getSignedUrl("getObject", {
+        Bucket: process.env.AWS_BUCKET_NAME,
+        Key: user.avatarId
+      })
+    }
+    if(!!user?.bannerId){
+      bannerImage = s3.getSignedUrl("getObject", {
+        Bucket: process.env.AWS_BUCKET_NAME,
+        Key: user.bannerId
+      })
+    }
 
     return {
-      user,
+      loggedUser: {
+        user,
+        avatarImage,
+        bannerImage
+      }
     };
   }
 
@@ -231,7 +351,7 @@ export class UserResolver {
   async changePassword(
     @Arg("token") token: string,
     @Arg("newPassword") newPassword: string,
-    @Ctx() { redis, req }: MyContext
+    @Ctx() { redis, req, s3 }: MyContext
   ): Promise<UserResponse> {
     if (newPassword.length < 6) {
       return {
@@ -274,7 +394,27 @@ export class UserResolver {
 
     //log in user after change password
     req.session.userId = user._id;
+    let avatarImage = null;
+    let bannerImage = null;
+    if(!!user?.avatarId){
+      avatarImage = s3.getSignedUrl("getObject", {
+        Bucket: process.env.AWS_BUCKET_NAME,
+        Key: user.avatarId
+      })
+    }
+    if(!!user?.bannerId){
+      bannerImage = s3.getSignedUrl("getObject", {
+        Bucket: process.env.AWS_BUCKET_NAME,
+        Key: user.bannerId
+      })
+    }
 
-    return { user };
+    return { 
+      loggedUser: {
+        user,
+        avatarImage,
+        bannerImage
+    } 
+  };
   }
 }
