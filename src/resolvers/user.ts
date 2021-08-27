@@ -89,15 +89,15 @@ export class UserResolver {
     const user = await User.findOne({_id: req.session.userId});
 
     if(avatarOrBanner=="avatar"){
-      if(user?.avatarId){
-        s3.deleteObject({
+      if(!!user?.avatarId){
+        await s3.deleteObject({
           Bucket: process.env.AWS_BUCKET_NAME,
           Key: user?.avatarId
         }).promise();
       }
     }else{
-      if(user?.bannerId){
-        s3.deleteObject({
+      if(!!user?.bannerId){
+        await s3.deleteObject({
           Bucket: process.env.AWS_BUCKET_NAME,
           Key: user?.bannerId
         }).promise();
