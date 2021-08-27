@@ -85,6 +85,48 @@ export class PostResolver {
     return Post.findOne({ _id: id });
   }
 
+  @Query(()=>PaginatedPosts)
+  async getPostsByCreatorId(
+    @Arg("creatorId", ()=>Int) creatorId: number,
+    @Arg("limit", () => Int) limit: number,
+    @Arg("cursor", () => String, { nullable: true }) cursor: string | null
+  ): Promise<PaginatedPosts>{
+
+    const realLimit = Math.min(50, limit);
+    const reaLimitPlusOne = realLimit + 1;
+
+    const replacements: any[] = [creatorId, reaLimitPlusOne];
+
+    if (cursor) {
+      replacements.push(new Date(parseInt(cursor)));
+    }
+
+    const posts = await getConnection().query(
+      `
+        select p.*,
+        json_build_object(
+          '_id', u._id,
+          'username', u.username,
+          'email', u.email,
+          'avatarId', u."avatarId",
+          'bannerId', u."bannerId",
+          'createdAt', u."createdAt",
+          'updatedAt', u."updatedAt"
+        ) creator
+        from post p
+        inner join public.user u on u._id = p."creatorId"
+        where p."creatorId" = $1 ${cursor ? `and p."createdAt" < $3` : ""}
+        order by "createdAt" DESC
+        limit $2
+      `,  replacements
+    )
+
+    return {
+      posts: posts.slice(0, realLimit),
+      hasMore: posts.length === reaLimitPlusOne,
+    };
+  }
+
   @Mutation(() => Post)
   @UseMiddleware(isAuth)
   async createPost(
