@@ -69,7 +69,7 @@ const main = async () => {
     region: process.env.AWS_REGION
   })
 
-  app.use(graphqlUploadExpress({ maxFileSize: 10000 * 20, maxFiles: 10 }));
+  app.use(graphqlUploadExpress({ maxFileSize: 100000 * 20, maxFiles: 10 }));
 
   const apolloServer = new ApolloServer({
     schema: await buildSchema({
