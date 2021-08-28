@@ -8,7 +8,7 @@ import {
   Query,
   Resolver,
 } from "type-graphql";
-import { getConnection } from "typeorm";
+import { Brackets, getConnection } from "typeorm";
 import { FriendRequest } from "../entities/FriendRequest";
 import { MyContext } from "../types";
 
@@ -60,14 +60,15 @@ export class FriendRequestResolver {
   ): Promise<UserRequest> {
     const request = await getConnection()
       .getRepository(FriendRequest)
-      .createQueryBuilder()
-      .where(
-        "(sender = :me AND receiver = :user) OR (sender = :user AND receiver = :me)",
-        {
-          me: req.session.userId,
-          user: userId,
-        }
-      )
+      .createQueryBuilder("request")
+      .where(new Brackets(qb => {
+        qb.where("request.sender = :me", {me: req.session.userId})
+        .andWhere("request.receiver = :user", {user: userId})
+      }))
+      .orWhere(new Brackets(qb=> {
+        qb.where("request.sender = :user", {user: userId})
+        .andWhere("request.receiver = :me", {me: req.session.userId})
+      }))
       .getOne();
 
     if (!request) {
