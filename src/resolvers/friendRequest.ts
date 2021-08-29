@@ -10,6 +10,7 @@ import {
 } from "type-graphql";
 import { Brackets, getConnection } from "typeorm";
 import { FriendRequest } from "../entities/FriendRequest";
+import { User } from "../entities/User";
 import { MyContext } from "../types";
 
 @ObjectType()
@@ -21,6 +22,15 @@ class UserRequest {
   isSender: boolean;
 }
 
+@ObjectType()
+class FriendRequestWithFriend {
+  @Field(()=> FriendRequest)
+  friendRequest: FriendRequest;
+
+  @Field(()=>User)
+  friend: User;
+}
+
 @Resolver(FriendRequest)
 export class FriendRequestResolver {
   @Query(() => [FriendRequest])
@@ -28,29 +38,41 @@ export class FriendRequestResolver {
     return FriendRequest.find({});
   }
 
-  @Query(() => [FriendRequest])
+  @Query(() => [FriendRequestWithFriend])
   async getUserFriendRequests(
     @Ctx() { req }: MyContext,
     @Arg("userId", () => Int, { nullable: true }) userId?: number
-  ): Promise<FriendRequest[]> {
-    const replacements: any[] = [];
+  ): Promise<FriendRequestWithFriend[]> {
 
+    //if userId is not specified, it means that we want to take requests of a logged user
+    let id: number = req.session.userId as number;
     if (userId) {
-      replacements.push(userId);
-    } else {
-      //if userId is not specified, it means that we want to take requests of a logged user
-      replacements.push(req.session.userId);
+      id = userId;
     }
 
-    const friendRequests = await getConnection().query(
-      `   select *
-                from friend_request
-                where sender = $1 or receiver = $1
-            `,
-      replacements
-    );
+    const friendRequests = await getConnection()
+    .getRepository(FriendRequest)
+    .createQueryBuilder()
+    .where('status like :status', {status: "accepted"})
+    .andWhere("sender = :userId OR receiver = :userId", {userId: id})
+    .orderBy('"createdAt"', "DESC")
+    .limit(9)
+    .getMany();
 
-    return friendRequests;
+    const friendRequestsWithFriend = await Promise.all(friendRequests.map(async fr=>{
+      let _id = fr.sender;
+      if(_id == id)
+        _id=fr.receiver;
+      
+      const friend = await User.findOne({where: {_id}})
+
+      return {
+        friendRequest: fr,
+        friend: (friend as User)
+      }
+    }));
+
+    return friendRequestsWithFriend;
   }
 
   @Query(() => UserRequest)
@@ -78,7 +100,7 @@ export class FriendRequestResolver {
       };
     }
 
-    //has this user sent me a friend request
+    //this user sent me a friend request
     let isSender = false;
     if (request.sender == userId) {
       isSender = true;
@@ -88,6 +110,29 @@ export class FriendRequestResolver {
       friendRequest: request,
       isSender,
     };
+  }
+
+  @Query(()=>Int)
+  async friendCount(
+    @Ctx() { req }: MyContext,
+    @Arg("userId", () => Int, { nullable: true }) userId?: number
+  ){
+    //if userId is not specified, it means that we want to take requests of a logged user
+    let id: number = req.session.userId as number;
+    if (userId) {
+      id = userId;
+    }
+
+    const count = await getConnection()
+    .getRepository(FriendRequest)
+    .createQueryBuilder()
+    .where('status like :status', {status: "accepted"})
+    .andWhere("sender = :userId OR receiver = :userId", {userId: id})
+    .getCount();
+
+    console.log(count)
+
+    return count;
   }
 
   @Mutation(() => Boolean)
