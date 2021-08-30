@@ -31,6 +31,15 @@ class FriendRequestWithFriend {
   friend: User;
 }
 
+@ObjectType()
+class PaginatedRequests {
+  @Field(() => [FriendRequestWithFriend])
+  friendRequestsWithFriends: FriendRequestWithFriend[];
+
+  @Field(() => Boolean)
+  hasMore: boolean;
+}
+
 @Resolver(FriendRequest)
 export class FriendRequestResolver {
   @Query(() => [FriendRequest])
@@ -38,17 +47,20 @@ export class FriendRequestResolver {
     return FriendRequest.find({});
   }
 
-  @Query(() => [FriendRequestWithFriend])
+  @Query(() => PaginatedRequests)
   async getUserFriendRequests(
     @Ctx() { req }: MyContext,
+    @Arg("limit", () => Int) limit: number,
     @Arg("userId", () => Int, { nullable: true }) userId?: number,
-    @Arg("limit", () => Int, { nullable: true }) limit?: number  
-  ): Promise<FriendRequestWithFriend[]> {
+    @Arg("skip", () => Int, { nullable: true }) skip?: number
+  ): Promise<PaginatedRequests> {
     //if userId is not specified, it means that we want to take requests of a logged user
     let id: number = req.session.userId as number;
     if (userId) {
       id = userId;
     }
+    const realLimit = Math.min(50, limit);
+    const reaLimitPlusOne = realLimit + 1;
 
     const friendRequests = getConnection()
       .getRepository(FriendRequest)
@@ -57,10 +69,15 @@ export class FriendRequestResolver {
       .andWhere("sender = :userId OR receiver = :userId", { userId: id })
       .orderBy('"createdAt"', "DESC");
 
-      if(limit){
-        friendRequests.limit(limit);
-      }
-      const frs = await friendRequests.getMany();
+    if (limit) {
+      friendRequests.take(reaLimitPlusOne);
+    }
+
+    if (skip) {
+      friendRequests.skip(skip);
+    }
+
+    const frs = await friendRequests.getMany();
 
     const friendRequestsWithFriend = await Promise.all(
       frs.map(async (fr) => {
@@ -76,7 +93,10 @@ export class FriendRequestResolver {
       })
     );
 
-    return friendRequestsWithFriend;
+    return {
+      friendRequestsWithFriends: friendRequestsWithFriend.slice(0, realLimit),
+      hasMore: friendRequestsWithFriend.length === reaLimitPlusOne,
+    };
   }
 
   @Query(() => UserRequest)
