@@ -24,10 +24,10 @@ class UserRequest {
 
 @ObjectType()
 class FriendRequestWithFriend {
-  @Field(()=> FriendRequest)
+  @Field(() => FriendRequest)
   friendRequest: FriendRequest;
 
-  @Field(()=>User)
+  @Field(() => User)
   friend: User;
 }
 
@@ -41,36 +41,40 @@ export class FriendRequestResolver {
   @Query(() => [FriendRequestWithFriend])
   async getUserFriendRequests(
     @Ctx() { req }: MyContext,
-    @Arg("userId", () => Int, { nullable: true }) userId?: number
+    @Arg("userId", () => Int, { nullable: true }) userId?: number,
+    @Arg("limit", () => Int, { nullable: true }) limit?: number  
   ): Promise<FriendRequestWithFriend[]> {
-
     //if userId is not specified, it means that we want to take requests of a logged user
     let id: number = req.session.userId as number;
     if (userId) {
       id = userId;
     }
 
-    const friendRequests = await getConnection()
-    .getRepository(FriendRequest)
-    .createQueryBuilder()
-    .where('status like :status', {status: "accepted"})
-    .andWhere("sender = :userId OR receiver = :userId", {userId: id})
-    .orderBy('"createdAt"', "DESC")
-    .limit(9)
-    .getMany();
+    const friendRequests = getConnection()
+      .getRepository(FriendRequest)
+      .createQueryBuilder()
+      .where("status like :status", { status: "accepted" })
+      .andWhere("sender = :userId OR receiver = :userId", { userId: id })
+      .orderBy('"createdAt"', "DESC");
 
-    const friendRequestsWithFriend = await Promise.all(friendRequests.map(async fr=>{
-      let _id = fr.sender;
-      if(_id == id)
-        _id=fr.receiver;
-      
-      const friend = await User.findOne({where: {_id}})
-
-      return {
-        friendRequest: fr,
-        friend: (friend as User)
+      if(limit){
+        friendRequests.limit(limit);
       }
-    }));
+      const frs = await friendRequests.getMany();
+
+    const friendRequestsWithFriend = await Promise.all(
+      frs.map(async (fr) => {
+        let _id = fr.sender;
+        if (_id == id) _id = fr.receiver;
+
+        const friend = await User.findOne({ where: { _id } });
+
+        return {
+          friendRequest: fr,
+          friend: friend as User,
+        };
+      })
+    );
 
     return friendRequestsWithFriend;
   }
@@ -83,14 +87,22 @@ export class FriendRequestResolver {
     const request = await getConnection()
       .getRepository(FriendRequest)
       .createQueryBuilder("request")
-      .where(new Brackets(qb => {
-        qb.where("request.sender = :me", {me: req.session.userId})
-        .andWhere("request.receiver = :user", {user: userId})
-      }))
-      .orWhere(new Brackets(qb=> {
-        qb.where("request.sender = :user", {user: userId})
-        .andWhere("request.receiver = :me", {me: req.session.userId})
-      }))
+      .where(
+        new Brackets((qb) => {
+          qb.where("request.sender = :me", { me: req.session.userId }).andWhere(
+            "request.receiver = :user",
+            { user: userId }
+          );
+        })
+      )
+      .orWhere(
+        new Brackets((qb) => {
+          qb.where("request.sender = :user", { user: userId }).andWhere(
+            "request.receiver = :me",
+            { me: req.session.userId }
+          );
+        })
+      )
       .getOne();
 
     if (!request) {
@@ -112,11 +124,11 @@ export class FriendRequestResolver {
     };
   }
 
-  @Query(()=>Int)
+  @Query(() => Int)
   async friendCount(
     @Ctx() { req }: MyContext,
     @Arg("userId", () => Int, { nullable: true }) userId?: number
-  ){
+  ) {
     //if userId is not specified, it means that we want to take requests of a logged user
     let id: number = req.session.userId as number;
     if (userId) {
@@ -124,13 +136,11 @@ export class FriendRequestResolver {
     }
 
     const count = await getConnection()
-    .getRepository(FriendRequest)
-    .createQueryBuilder()
-    .where('status like :status', {status: "accepted"})
-    .andWhere("sender = :userId OR receiver = :userId", {userId: id})
-    .getCount();
-
-    console.log(count)
+      .getRepository(FriendRequest)
+      .createQueryBuilder()
+      .where("status like :status", { status: "accepted" })
+      .andWhere("sender = :userId OR receiver = :userId", { userId: id })
+      .getCount();
 
     return count;
   }
@@ -193,6 +203,6 @@ export class FriendRequestResolver {
       )
       .execute();
 
-      return result.affected==1;
+    return result.affected == 1;
   }
 }
