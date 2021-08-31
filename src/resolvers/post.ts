@@ -27,6 +27,9 @@ class PostInput {
 
   @Field()
   activity?: string;
+
+  @Field(()=>[Int])
+  tagged: number[]
 }
 
 @ObjectType()
@@ -151,7 +154,8 @@ export class PostResolver {
       activity: input.activity,
       feeling: input.feeling,
       creatorId: req.session.userId,
-      imageId: imageId ? imageId: ""
+      imageId: imageId ? imageId: "",
+      tagged: input.tagged
     }).save();
   }
 
