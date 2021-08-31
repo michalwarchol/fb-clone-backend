@@ -50,6 +50,10 @@ export class Post extends BaseEntity {
   @Column({nullable: true})
   imageId!: string;
 
+  @Field(()=>[Int])
+  @Column({type: "int", array: true})
+  tagged: number[]
+
   @Field()
   @Column({ type: "int", default: 0 })
   like!: number;
