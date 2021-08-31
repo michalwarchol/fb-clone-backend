@@ -144,6 +144,39 @@ export class FriendRequestResolver {
     };
   }
 
+  @Query(() => [FriendRequestWithFriend])
+  async getSuggestedFriendTags(
+    @Ctx() { req }: MyContext,
+    @Arg("searchName", () => String, { nullable: true }) searchName?: string
+  ) {
+    const friendRequests = await getConnection()
+      .getRepository(FriendRequest)
+      .createQueryBuilder()
+      .where("sender = :me", { me: req.session.userId })
+      .orWhere("receiver = :me", { me: req.session.userId })
+      .getMany();
+
+    let friendRequestsWithFriend = await Promise.all(
+      friendRequests.map(async (fr) => {
+        let _id = fr.sender;
+        if (_id == req.session.userId) _id = fr.receiver;
+        const friend = await User.findOne({ where: { _id } });
+
+        return {
+          friendRequest: fr,
+          friend: friend as User,
+        };
+      })
+    );
+
+    if (searchName) {
+      friendRequestsWithFriend = friendRequestsWithFriend.filter(
+        (f) => f.friend.username.toLowerCase().indexOf(searchName.toLowerCase()) != -1
+      );
+    }
+    return friendRequestsWithFriend.slice(0, 20);
+  }
+
   @Query(() => Int)
   async friendCount(
     @Ctx() { req }: MyContext,
