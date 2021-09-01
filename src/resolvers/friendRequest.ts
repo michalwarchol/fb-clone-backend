@@ -7,10 +7,12 @@ import {
   ObjectType,
   Query,
   Resolver,
+  UseMiddleware,
 } from "type-graphql";
 import { Brackets, getConnection } from "typeorm";
 import { FriendRequest } from "../entities/FriendRequest";
 import { User } from "../entities/User";
+import { isAuth } from "../middleware/isAuth";
 import { MyContext } from "../types";
 
 @ObjectType()
@@ -48,6 +50,7 @@ export class FriendRequestResolver {
   }
 
   @Query(() => PaginatedRequests)
+  @UseMiddleware(isAuth)
   async getUserFriendRequests(
     @Ctx() { req }: MyContext,
     @Arg("limit", () => Int) limit: number,
@@ -100,6 +103,7 @@ export class FriendRequestResolver {
   }
 
   @Query(() => UserRequest)
+  @UseMiddleware(isAuth)
   async getFriendRequest(
     @Ctx() { req }: MyContext,
     @Arg("userId", () => Int) userId: number
@@ -145,6 +149,7 @@ export class FriendRequestResolver {
   }
 
   @Query(() => [FriendRequestWithFriend])
+  @UseMiddleware(isAuth)
   async getSuggestedFriendTags(
     @Ctx() { req }: MyContext,
     @Arg("searchName", () => String, { nullable: true }) searchName?: string
@@ -177,7 +182,34 @@ export class FriendRequestResolver {
     return friendRequestsWithFriend.slice(0, 20);
   }
 
+  @Query(()=>[FriendRequestWithFriend])
+  @UseMiddleware(isAuth)
+  async getInProgressFriendRequests(
+    @Ctx() {req}: MyContext
+  ): Promise<FriendRequestWithFriend[]> {
+    const requests = await getConnection()
+    .getRepository(FriendRequest)
+    .createQueryBuilder()
+    .where("receiver = :me", {me: req.session.userId})
+    .andWhere('status like :progress', {progress: "in-progress"})
+    .getMany();
+
+    let friendRequestsWithFriend = await Promise.all(
+      requests.map(async (fr) => {
+        let _id = fr.sender;
+        const friend = await User.findOne({ where: { _id } });
+
+        return {
+          friendRequest: fr,
+          friend: friend as User,
+        };
+      })
+    );
+      return friendRequestsWithFriend;
+  }
+
   @Query(() => Int)
+  @UseMiddleware(isAuth)
   async friendCount(
     @Ctx() { req }: MyContext,
     @Arg("userId", () => Int, { nullable: true }) userId?: number
@@ -199,6 +231,7 @@ export class FriendRequestResolver {
   }
 
   @Mutation(() => Boolean)
+  @UseMiddleware(isAuth)
   async createFriendRequest(
     @Ctx() { req }: MyContext,
     @Arg("receiverId", () => Int) receiverId: number
@@ -218,6 +251,7 @@ export class FriendRequestResolver {
   }
 
   @Mutation(() => Boolean)
+  @UseMiddleware(isAuth)
   async acceptFriendRequest(
     @Ctx() { req }: MyContext,
     @Arg("userId", () => Int) userId: number
@@ -239,6 +273,7 @@ export class FriendRequestResolver {
   }
 
   @Mutation(() => Boolean)
+  @UseMiddleware(isAuth)
   async removeFriendRequest(
     @Ctx() { req }: MyContext,
     @Arg("userId", () => Int) userId: number
