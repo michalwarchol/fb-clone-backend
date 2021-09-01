@@ -153,7 +153,7 @@ export class UserResolver {
   @Mutation(() => UserResponse)
   async register(
     @Arg("credentials") credentials: Credentials,
-    @Ctx() { req, s3 }: MyContext
+    @Ctx() { req }: MyContext
   ): Promise<UserResponse> {
     if (
       /^\w+([-+.']\w+)*@\w+([-.]\w+)*\.\w+([-.]\w+)*$/.test(
@@ -231,24 +231,11 @@ export class UserResolver {
       }
     }
     req.session.userId = user._id;
-    let avatarImage = null;
-    let bannerImage = null;
-    if(!!user?.avatarId){
-      avatarImage = s3.getSignedUrl("getObject", {
-        Bucket: process.env.AWS_BUCKET_NAME,
-        Key: user.avatarId
-      })
-    }
-    if(!!user?.bannerId){
-      bannerImage = s3.getSignedUrl("getObject", {
-        Bucket: process.env.AWS_BUCKET_NAME,
-        Key: user.bannerId
-      })
-    }
+
     return { loggedUser: {
       user, 
-      avatarImage, 
-      bannerImage
+      avatarImage: "", 
+      bannerImage: ""
     } 
   };
   }
