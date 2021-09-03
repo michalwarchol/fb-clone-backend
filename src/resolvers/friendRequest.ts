@@ -65,11 +65,16 @@ export class FriendRequestResolver {
     const realLimit = Math.min(50, limit);
     const reaLimitPlusOne = realLimit + 1;
 
+    console.log(id)
+
     const friendRequests = getConnection()
       .getRepository(FriendRequest)
       .createQueryBuilder()
-      .where("status like :status", { status: "accepted" })
-      .andWhere("sender = :userId OR receiver = :userId", { userId: id })
+      .where(new Brackets(qb=>{
+        qb.where("sender = :userId", {userId: id})
+        .orWhere("receiver = :userId", {userId: id})
+      }))
+      .andWhere('status like :progress', {progress: "accepted"})
       .orderBy('"createdAt"', "DESC");
 
     if (limit) {
@@ -81,6 +86,7 @@ export class FriendRequestResolver {
     }
 
     const frs = await friendRequests.getMany();
+    console.log(frs)
 
     const friendRequestsWithFriend = await Promise.all(
       frs.map(async (fr) => {
@@ -223,8 +229,11 @@ export class FriendRequestResolver {
     const count = await getConnection()
       .getRepository(FriendRequest)
       .createQueryBuilder()
-      .where("status like :status", { status: "accepted" })
-      .andWhere("sender = :userId OR receiver = :userId", { userId: id })
+      .where(new Brackets(qb=>{
+        qb.where("sender = :userId", {userId: id})
+        .orWhere("receiver = :userId", {userId: id})
+      }))
+      .andWhere('status like :progress', {progress: "accepted"})
       .getCount();
 
     return count;
