@@ -23,6 +23,8 @@ import { CommentResolver } from "./resolvers/comment";
 import { graphqlUploadExpress } from "graphql-upload";
 import { FriendRequest } from "./entities/FriendRequest";
 import { FriendRequestResolver } from "./resolvers/friendRequest";
+import { Story } from "./entities/Story";
+import { StoryResolver } from "./resolvers/story";
 
 const main = async () => {
 
@@ -33,7 +35,7 @@ const main = async () => {
     password: process.env.POSTGRESQL_PASSWORD,
     logging: true,
     synchronize: true,
-    entities: [Post, User, Reaction, Comment, FriendRequest]
+    entities: [Post, User, Reaction, Comment, FriendRequest, Story]
   })
 
   const app = express();
@@ -75,7 +77,7 @@ const main = async () => {
 
   const apolloServer = new ApolloServer({
     schema: await buildSchema({
-      resolvers: [HelloResolver, PostResolver, UserResolver, ReactionResolver, CommentResolver, FriendRequestResolver],
+      resolvers: [HelloResolver, PostResolver, UserResolver, ReactionResolver, CommentResolver, FriendRequestResolver, StoryResolver],
       validate: false,
     }),
     context: ({ req, res }): MyContext => ({ req, res, redis, s3 }),
