@@ -4,6 +4,7 @@ import { BaseEntity, Column, CreateDateColumn, Entity, OneToMany, PrimaryGenerat
 import { Comment } from "./Comment";
 import { Post } from "./Post";
 import { Reaction } from "./Reaction";
+import { Story } from "./Story";
 
 @ObjectType()
 @Entity()
@@ -39,7 +40,10 @@ export class User extends BaseEntity {
   reactions: Reaction[];
 
   @OneToMany(()=>Comment, comment=>comment.creator)
-  comments: Comment[]
+  comments: Comment[];
+
+  @OneToMany(()=>Story, story=>story.user)
+  stories: Story[];
 
   @Field(()=> String)
   @CreateDateColumn()
@@ -47,5 +51,5 @@ export class User extends BaseEntity {
   
   @Field(()=> String)
   @UpdateDateColumn()
-  updatedAt: Date = new Date();
+  updatedAt: Date;
 }
