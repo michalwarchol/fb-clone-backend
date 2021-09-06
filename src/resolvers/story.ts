@@ -17,14 +17,14 @@ import { MyContext } from "../types";
 @InputType()
 class StoryInput {
 
-  @Field()
-  text: string;
+  @Field({nullable: true})
+  text?: string;
 
-  @Field()
-  font: string;
+  @Field({nullable: true})
+  font?: string;
 
-  @Field()
-  background: number;
+  @Field({nullable: true})
+  gradient?: string;
 
   @Field({nullable: true})
   time?: number;

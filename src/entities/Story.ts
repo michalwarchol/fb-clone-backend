@@ -17,17 +17,17 @@ export class Story extends BaseEntity {
     @ManyToOne(()=>User, user=>user.stories)
     user: User;
 
-    @Field()
-    @Column()
-    text!: string;
+    @Field({nullable: true})
+    @Column({nullable: true, default: null})
+    text: string;
 
-    @Field()
-    @Column()
-    font!: string;
+    @Field({nullable: true})
+    @Column({nullable: true, default: null})
+    font: string;
 
-    @Field()
-    @Column()
-    background: number;
+    @Field({nullable: true})
+    @Column({nullable: true, default: null})
+    gradient: string;
 
     @Field()
     @Column({default: 5000})
