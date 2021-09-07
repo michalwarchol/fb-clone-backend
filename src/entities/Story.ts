@@ -15,7 +15,7 @@ export class Story extends BaseEntity {
 
     @Field(()=>User)
     @ManyToOne(()=>User, user=>user.stories)
-    user: User;
+    creator: User;
 
     @Field({nullable: true})
     @Column({nullable: true, default: null})
