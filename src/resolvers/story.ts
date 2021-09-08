@@ -71,7 +71,7 @@ export class StoryResolver {
           AND friend_request.status = $1
         )
         AND s."createdAt" > $3
-        ORDER BY s."userId" ASC, s."createdAt" DESC; 
+        ORDER BY s."userId" ASC, s."createdAt" ASC; 
       `, replacements
     )
     return stories;
