@@ -40,10 +40,40 @@ class PaginatedRequests {
 
   @Field(() => Boolean)
   hasMore: boolean;
+
+  @Field(()=>Int)
+  mutualFriends: number;
 }
 
 @Resolver(FriendRequest)
 export class FriendRequestResolver {
+
+  async getMutualFriendsCount(me: number, userId: number): Promise<number>{
+
+    if(me==userId){
+      return 0;
+    }
+
+    const mutualFriends = await getConnection().query(
+      `
+        SELECT COUNT(status)
+        FROM friend_request fr
+        WHERE ((sender = $1 AND status = $3 AND receiver != $2) OR (receiver = $1 AND status = $3 AND sender != $2))
+        AND EXISTS(
+          SELECT 1
+          FROM friend_request fr2
+          WHERE ((fr2.receiver = fr.sender AND fr2.sender = $2 AND fr2.receiver != $1) OR
+          (fr2.receiver = fr.receiver AND fr2.sender = $2 AND fr2.receiver != $1) OR
+          (fr2.sender = fr.sender AND fr2.receiver = $2 AND fr2.sender != $1) OR
+          (fr2.sender = fr.receiver AND fr2.receiver = $2 AND fr2.sender != $1)
+          ) 
+          AND fr2.status = $3
+        )
+      `, [me, userId, "accepted"]
+    )
+    return mutualFriends[0].count;
+  }
+
   @Query(() => [FriendRequest])
   async friendRequests(): Promise<FriendRequest[]> {
     return FriendRequest.find({});
@@ -65,8 +95,6 @@ export class FriendRequestResolver {
     const realLimit = Math.min(50, limit);
     const reaLimitPlusOne = realLimit + 1;
 
-    console.log(id)
-
     const friendRequests = getConnection()
       .getRepository(FriendRequest)
       .createQueryBuilder()
@@ -86,7 +114,6 @@ export class FriendRequestResolver {
     }
 
     const frs = await friendRequests.getMany();
-    console.log(frs)
 
     const friendRequestsWithFriend = await Promise.all(
       frs.map(async (fr) => {
@@ -102,9 +129,15 @@ export class FriendRequestResolver {
       })
     );
 
+    let mutualFriends = 0;
+    if(userId){
+      mutualFriends = await this.getMutualFriendsCount(req.session.userId!, userId);
+    }
+
     return {
       friendRequestsWithFriends: friendRequestsWithFriend.slice(0, realLimit),
       hasMore: friendRequestsWithFriend.length === reaLimitPlusOne,
+      mutualFriends
     };
   }
 
@@ -238,6 +271,8 @@ export class FriendRequestResolver {
 
     return count;
   }
+
+  
 
   @Mutation(() => Boolean)
   @UseMiddleware(isAuth)
