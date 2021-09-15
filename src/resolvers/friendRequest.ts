@@ -34,6 +34,15 @@ class FriendRequestWithFriend {
 }
 
 @ObjectType()
+class FriendSuggestion {
+  @Field(() => User)
+  friend: User;
+
+  @Field(() => Int)
+  mutual: number;
+}
+
+@ObjectType()
 class PaginatedRequests {
   @Field(() => [FriendRequestWithFriend])
   friendRequestsWithFriends: FriendRequestWithFriend[];
@@ -41,16 +50,14 @@ class PaginatedRequests {
   @Field(() => Boolean)
   hasMore: boolean;
 
-  @Field(()=>Int)
+  @Field(() => Int)
   mutualFriends: number;
 }
 
 @Resolver(FriendRequest)
 export class FriendRequestResolver {
-
-  async getMutualFriendsCount(me: number, userId: number): Promise<number>{
-
-    if(me==userId){
+  async getMutualFriendsCount(me: number, userId: number): Promise<number> {
+    if (me == userId) {
       return 0;
     }
 
@@ -69,8 +76,9 @@ export class FriendRequestResolver {
           ) 
           AND fr2.status = $3
         )
-      `, [me, userId, "accepted"]
-    )
+      `,
+      [me, userId, "accepted"]
+    );
     return mutualFriends[0].count;
   }
 
@@ -98,11 +106,15 @@ export class FriendRequestResolver {
     const friendRequests = getConnection()
       .getRepository(FriendRequest)
       .createQueryBuilder()
-      .where(new Brackets(qb=>{
-        qb.where("sender = :userId", {userId: id})
-        .orWhere("receiver = :userId", {userId: id})
-      }))
-      .andWhere('status like :progress', {progress: "accepted"})
+      .where(
+        new Brackets((qb) => {
+          qb.where("sender = :userId", { userId: id }).orWhere(
+            "receiver = :userId",
+            { userId: id }
+          );
+        })
+      )
+      .andWhere("status like :progress", { progress: "accepted" })
       .orderBy('"createdAt"', "DESC");
 
     if (limit) {
@@ -130,14 +142,17 @@ export class FriendRequestResolver {
     );
 
     let mutualFriends = 0;
-    if(userId){
-      mutualFriends = await this.getMutualFriendsCount(req.session.userId!, userId);
+    if (userId) {
+      mutualFriends = await this.getMutualFriendsCount(
+        req.session.userId!,
+        userId
+      );
     }
 
     return {
       friendRequestsWithFriends: friendRequestsWithFriend.slice(0, realLimit),
       hasMore: friendRequestsWithFriend.length === reaLimitPlusOne,
-      mutualFriends
+      mutualFriends,
     };
   }
 
@@ -215,23 +230,71 @@ export class FriendRequestResolver {
 
     if (searchName) {
       friendRequestsWithFriend = friendRequestsWithFriend.filter(
-        (f) => f.friend.username.toLowerCase().indexOf(searchName.toLowerCase()) != -1
+        (f) =>
+          f.friend.username.toLowerCase().indexOf(searchName.toLowerCase()) !=
+          -1
       );
     }
     return friendRequestsWithFriend.slice(0, 20);
   }
 
-  @Query(()=>[FriendRequestWithFriend])
+  @Query(() => [FriendSuggestion])
+  @UseMiddleware(isAuth)
+  async getSuggestedFriends(
+    @Ctx() ctx: MyContext
+  ): Promise<FriendSuggestion[]> {
+    const myFriends = await this.getUserFriendRequests(ctx, 50);
+    let friendsOfMyFriends: FriendRequestWithFriend[] = [];
+    for (const friend of myFriends.friendRequestsWithFriends) {
+      const possibleFriends = await this.getUserFriendRequests(
+        ctx,
+        50,
+        friend.friend._id
+      );
+      friendsOfMyFriends = friendsOfMyFriends.concat(
+        possibleFriends.friendRequestsWithFriends
+      );
+    }
+
+    let myNextFriendsWithMutualCount: FriendSuggestion[] = [];
+    for (const myNextFriend of friendsOfMyFriends) {
+      if (
+        myFriends.friendRequestsWithFriends.find(
+          (friend) => friend.friend._id == myNextFriend.friend._id
+        )
+      ) {
+        continue;
+      }
+
+      if(myNextFriend.friend._id==ctx.req.session.userId){
+        continue;
+      }
+
+      const mutualFriends = await this.getMutualFriendsCount(
+        ctx.req.session.userId!,
+        myNextFriend.friend._id
+      );
+
+      myNextFriendsWithMutualCount.push({
+        friend: myNextFriend.friend,
+        mutual: mutualFriends,
+      });
+    }
+
+    return myNextFriendsWithMutualCount;
+  }
+
+  @Query(() => [FriendRequestWithFriend])
   @UseMiddleware(isAuth)
   async getInProgressFriendRequests(
-    @Ctx() {req}: MyContext
+    @Ctx() { req }: MyContext
   ): Promise<FriendRequestWithFriend[]> {
     const requests = await getConnection()
-    .getRepository(FriendRequest)
-    .createQueryBuilder()
-    .where("receiver = :me", {me: req.session.userId})
-    .andWhere('status like :progress', {progress: "in-progress"})
-    .getMany();
+      .getRepository(FriendRequest)
+      .createQueryBuilder()
+      .where("receiver = :me", { me: req.session.userId })
+      .andWhere("status like :progress", { progress: "in-progress" })
+      .getMany();
 
     let friendRequestsWithFriend = await Promise.all(
       requests.map(async (fr) => {
@@ -244,7 +307,7 @@ export class FriendRequestResolver {
         };
       })
     );
-      return friendRequestsWithFriend;
+    return friendRequestsWithFriend;
   }
 
   @Query(() => Int)
@@ -262,17 +325,19 @@ export class FriendRequestResolver {
     const count = await getConnection()
       .getRepository(FriendRequest)
       .createQueryBuilder()
-      .where(new Brackets(qb=>{
-        qb.where("sender = :userId", {userId: id})
-        .orWhere("receiver = :userId", {userId: id})
-      }))
-      .andWhere('status like :progress', {progress: "accepted"})
+      .where(
+        new Brackets((qb) => {
+          qb.where("sender = :userId", { userId: id }).orWhere(
+            "receiver = :userId",
+            { userId: id }
+          );
+        })
+      )
+      .andWhere("status like :progress", { progress: "accepted" })
       .getCount();
 
     return count;
   }
-
-  
 
   @Mutation(() => Boolean)
   @UseMiddleware(isAuth)
