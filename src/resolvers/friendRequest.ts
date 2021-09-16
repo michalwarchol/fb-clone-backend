@@ -244,6 +244,18 @@ export class FriendRequestResolver {
     @Ctx() ctx: MyContext
   ): Promise<FriendSuggestion[]> {
     const myFriends = await this.getUserFriendRequests(ctx, 50);
+
+    if (myFriends.friendRequestsWithFriends.length < 1) {
+      const uknownUsers = await getConnection()
+        .getRepository(User)
+        .createQueryBuilder()
+        .where("_id != :me", { me: ctx.req.session.userId })
+        .limit(20)
+        .getMany();
+
+      return uknownUsers.map((friend) => ({ friend, mutual: 0 }));
+    }
+
     let friendsOfMyFriends: FriendRequestWithFriend[] = [];
     for (const friend of myFriends.friendRequestsWithFriends) {
       const possibleFriends = await this.getUserFriendRequests(
@@ -266,7 +278,7 @@ export class FriendRequestResolver {
         continue;
       }
 
-      if(myNextFriend.friend._id==ctx.req.session.userId){
+      if (myNextFriend.friend._id == ctx.req.session.userId) {
         continue;
       }
 
