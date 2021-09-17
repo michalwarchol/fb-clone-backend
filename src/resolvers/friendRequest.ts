@@ -243,55 +243,92 @@ export class FriendRequestResolver {
   async getSuggestedFriends(
     @Ctx() ctx: MyContext
   ): Promise<FriendSuggestion[]> {
+    let myNextFriendsWithMutualCount: FriendSuggestion[] = [];
+
     const myFriends = await this.getUserFriendRequests(ctx, 50);
 
-    if (myFriends.friendRequestsWithFriends.length < 1) {
-      const uknownUsers = await getConnection()
+    //get friends of my friends
+    if (myFriends.friendRequestsWithFriends.length > 0) {
+      let friendsOfMyFriends: FriendRequestWithFriend[] = [];
+      for (const friend of myFriends.friendRequestsWithFriends) {
+        const possibleFriends = await this.getUserFriendRequests(
+          ctx,
+          50,
+          friend.friend._id
+        );
+        friendsOfMyFriends = friendsOfMyFriends.concat(
+          possibleFriends.friendRequestsWithFriends
+        );
+      }
+
+      //check if there is no request in-progress
+      const realUnknownUsers = await Promise.all(
+        friendsOfMyFriends.map(async (user) => {
+          const request = await this.getFriendRequest(ctx, user.friend._id);
+          if (request.friendRequest) {
+            return false;
+          } else {
+            return true;
+          }
+        })
+      );
+      const a = friendsOfMyFriends.filter(
+        (_v, index) => realUnknownUsers[index]
+      );
+
+      for (const myNextFriend of a) {
+        if ( //filter out my friends from my possible new friends
+          myFriends.friendRequestsWithFriends.find(
+            (friend) => friend.friend._id == myNextFriend.friend._id
+          )
+        ) {
+          continue;
+        }
+        //filter out me from my possible new friends
+        if (myNextFriend.friend._id == ctx.req.session.userId) {
+          continue;
+        }
+
+        const mutualFriends = await this.getMutualFriendsCount(
+          ctx.req.session.userId!,
+          myNextFriend.friend._id
+        );
+
+        myNextFriendsWithMutualCount.push({
+          friend: myNextFriend.friend,
+          mutual: mutualFriends,
+        });
+      }
+    }
+
+    //get completely unknown users
+    const unknownUsers = await getConnection()
         .getRepository(User)
         .createQueryBuilder()
         .where("_id != :me", { me: ctx.req.session.userId })
         .limit(20)
         .getMany();
 
-      return uknownUsers.map((friend) => ({ friend, mutual: 0 }));
-    }
-
-    let friendsOfMyFriends: FriendRequestWithFriend[] = [];
-    for (const friend of myFriends.friendRequestsWithFriends) {
-      const possibleFriends = await this.getUserFriendRequests(
-        ctx,
-        50,
-        friend.friend._id
-      );
-      friendsOfMyFriends = friendsOfMyFriends.concat(
-        possibleFriends.friendRequestsWithFriends
-      );
-    }
-
-    let myNextFriendsWithMutualCount: FriendSuggestion[] = [];
-    for (const myNextFriend of friendsOfMyFriends) {
-      if (
-        myFriends.friendRequestsWithFriends.find(
-          (friend) => friend.friend._id == myNextFriend.friend._id
+        const realUnknownUsers = await Promise.all(
+          unknownUsers.map(async user=>{
+            const request = await this.getFriendRequest(ctx, user._id);
+            if(request.friendRequest){
+              return false;
+            }else{
+              return true;
+            }
+          }
         )
-      ) {
-        continue;
-      }
+        )
+      const a = unknownUsers.filter((_v, index)=>realUnknownUsers[index]);
+      const b = a.map((friend) => ({ friend, mutual: 0 }));
 
-      if (myNextFriend.friend._id == ctx.req.session.userId) {
-        continue;
-      }
-
-      const mutualFriends = await this.getMutualFriendsCount(
-        ctx.req.session.userId!,
-        myNextFriend.friend._id
-      );
-
-      myNextFriendsWithMutualCount.push({
-        friend: myNextFriend.friend,
-        mutual: mutualFriends,
-      });
-    }
+      //push only those who are not in the output array
+      b.forEach((unknown)=>{
+        if(!myNextFriendsWithMutualCount.find(nextFriend=>nextFriend.friend._id == unknown.friend._id)){
+          myNextFriendsWithMutualCount.push(unknown)
+        }
+      })
 
     return myNextFriendsWithMutualCount;
   }
