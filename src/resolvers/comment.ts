@@ -19,7 +19,7 @@ export class CommentResolver {
   async getPostComments(
     @Arg("postId", () => Int) postId: number,
     @Arg("limit", ()=>Int) limit: number,
-    @Arg("offset", ()=>Int, {nullable: true}) offset: number | null
+    @Arg("cursor", ()=>String, {nullable: true}) cursor: string | null
   ): Promise<PaginatedComments> {
     
     const realLimit = Math.min(50, limit);
@@ -27,8 +27,8 @@ export class CommentResolver {
 
     const replacements: any[] = [postId, reaLimitPlusOne];
 
-    if (offset) {
-      replacements.push(offset);
+    if (cursor) {
+      replacements.push(new Date(parseInt(cursor)));
     }
 
     const comments = await getConnection().query(
@@ -38,14 +38,15 @@ export class CommentResolver {
       '_id', u._id,
       'username', u.username,
       'email', u.email,
+      'avatarId', u."avatarId",
+      'bannerId', u."bannerId",
       'createdAt', u."createdAt",
       'updatedAt', u."updatedAt"
       ) creator
     from comment c
     inner join public.user u on u._id = c."creatorId"
-    where c."postId" = $1
+    where c."postId" = $1 ${cursor ? ` and c."createdAt" < $3` : ``}
     order by c."createdAt" DESC
-    ${offset ? `offset $3` : ``}
     limit $2
     `, replacements)
 
