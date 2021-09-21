@@ -1,6 +1,7 @@
 import { Field, Int, ObjectType } from "type-graphql";
 import { BaseEntity, Column, CreateDateColumn, Entity, OneToMany, PrimaryGeneratedColumn, UpdateDateColumn } from "typeorm";
 import { Comment } from "./Comment";
+import { Notification } from "./Notification";
 import { Post } from "./Post";
 import { Reaction } from "./Reaction";
 import { Story } from "./Story";
@@ -43,6 +44,9 @@ export class User extends BaseEntity {
 
   @OneToMany(()=>Story, story=>story.creator)
   stories: Story[];
+
+  @OneToMany(()=>Notification, notification=>notification.triggerUser)
+  triggers: Notification[];
 
   @Field(()=> String)
   @CreateDateColumn()
