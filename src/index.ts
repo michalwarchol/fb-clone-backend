@@ -24,6 +24,8 @@ import { FriendRequest } from "./entities/FriendRequest";
 import { FriendRequestResolver } from "./resolvers/friendRequest";
 import { Story } from "./entities/Story";
 import { StoryResolver } from "./resolvers/story";
+import { NotificationResolver } from "./resolvers/notification";
+import { Notification } from "./entities/Notification";
 
 const main = async () => {
 
@@ -34,7 +36,7 @@ const main = async () => {
     password: process.env.POSTGRESQL_PASSWORD,
     logging: true,
     synchronize: true,
-    entities: [Post, User, Reaction, Comment, FriendRequest, Story]
+    entities: [Post, User, Reaction, Comment, FriendRequest, Story, Notification]
   })
 
   const app = express();
@@ -76,7 +78,7 @@ const main = async () => {
 
   const apolloServer = new ApolloServer({
     schema: await buildSchema({
-      resolvers: [PostResolver, UserResolver, ReactionResolver, CommentResolver, FriendRequestResolver, StoryResolver],
+      resolvers: [PostResolver, UserResolver, ReactionResolver, CommentResolver, FriendRequestResolver, StoryResolver, NotificationResolver],
       validate: false,
     }),
     context: ({ req, res }): MyContext => ({ req, res, redis, s3 }),
