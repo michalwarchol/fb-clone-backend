@@ -46,6 +46,10 @@ export class Notification extends BaseEntity {
   @Column()
   receiverId!: number;
 
+  @Field(()=>Int, {nullable: true})
+  @Column({nullable: true})
+  postId: number;
+
   @Field(()=>Int)
   @Column({default: null, nullable: true})
   triggerId: number;
