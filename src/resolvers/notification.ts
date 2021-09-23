@@ -88,6 +88,12 @@ export class NotificationResolver {
     @Ctx() { req }: MyContext,
     @Arg("input", () => NotificationInput) input: NotificationInput
   ): Promise<boolean> {
+
+    if(input.receiverId==req.session.userId){
+      //user will not receive a notification after activities affecting himself
+      return false;
+    }
+
     if (input.postId) {
       const isInDb = await getConnection()
         .getRepository(Notification)
@@ -102,7 +108,6 @@ export class NotificationResolver {
         return false;
       }
     }
-
     await Notification.create({
       triggerId: req.session.userId,
       ...input,
