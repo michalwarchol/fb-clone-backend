@@ -16,6 +16,7 @@ export enum NotificationType {
   COMMENT = "comment", //someone commented your post
   FRIEND_REQ = "friend_req", //someone sent you a friend request
   FRIEND_ACCEPT = "friend_accpet", //someone accepted your friend request
+  TAG = "tag", //someone tagged you in a post
 }
 
 registerEnumType(NotificationType, {
