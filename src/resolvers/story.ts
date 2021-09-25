@@ -3,10 +3,12 @@ import {
   Arg,
   Ctx,
   Field,
+  FieldResolver,
   InputType,
   Mutation,
   Query,
   Resolver,
+  Root,
   UseMiddleware,
 } from "type-graphql";
 import { getConnection } from "typeorm";
@@ -33,6 +35,12 @@ class StoryInput {
 
 @Resolver(Story)
 export class StoryResolver {
+
+  @FieldResolver()
+  creator(@Root() story: Story, @Ctx(){userLoader}: MyContext){
+    return userLoader.load(story.userId);
+  }
+
   @Query(() => [Story])
   async getStories() {
     return Story.find({});
@@ -52,18 +60,8 @@ export class StoryResolver {
 
     const stories = await getConnection().query(
       `
-        SELECT s.*,
-        json_build_object(
-          '_id', u._id,
-          'username', u.username,
-          'email', u.email,
-          'avatarId', u."avatarId",
-          'bannerId', u."bannerId",
-          'createdAt', u."createdAt",
-          'updatedAt', u."updatedAt"
-        ) creator
+        SELECT s.*
         FROM story s
-        INNER JOIN public.user u on u._id = s."userId"
         WHERE EXISTS (
           SELECT 1 FROM friend_request
           WHERE ((friend_request.sender = s."userId" AND friend_request.receiver = $2) 

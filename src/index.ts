@@ -26,6 +26,7 @@ import { Story } from "./entities/Story";
 import { StoryResolver } from "./resolvers/story";
 import { NotificationResolver } from "./resolvers/notification";
 import { Notification } from "./entities/Notification";
+import { createUserLoader } from "./utils/createUserLoader";
 
 const main = async () => {
 
@@ -81,7 +82,7 @@ const main = async () => {
       resolvers: [PostResolver, UserResolver, ReactionResolver, CommentResolver, FriendRequestResolver, StoryResolver, NotificationResolver],
       validate: false,
     }),
-    context: ({ req, res }): MyContext => ({ req, res, redis, s3 }),
+    context: ({ req, res }): MyContext => ({ req, res, redis, s3, userLoader: createUserLoader() }),
     uploads: false
   });
 

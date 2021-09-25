@@ -2,11 +2,13 @@ import {
   Arg,
   Ctx,
   Field,
+  FieldResolver,
   InputType,
   Int,
   Mutation,
   Query,
   Resolver,
+  Root,
   UseMiddleware,
 } from "type-graphql";
 import { getConnection } from "typeorm";
@@ -34,6 +36,12 @@ class NotificationInput {
 
 @Resolver(Notification)
 export class NotificationResolver {
+
+  @FieldResolver()
+  triggerUser(@Root() notification: Notification, @Ctx(){userLoader}: MyContext){
+    return userLoader.load(notification.triggerId);
+  }
+
   @Query(() => [Notification])
   async getNotifications(): Promise<Notification[]> {
     return Notification.find({});
@@ -46,18 +54,8 @@ export class NotificationResolver {
   ): Promise<Notification[]> {
     const notifications = await getConnection().query(
       `
-    select n.*,
-    json_build_object(
-      '_id', u._id,
-      'username', u.username,
-      'email', u.email,
-      'avatarId', u."avatarId",
-      'bannerId', u."bannerId",
-      'createdAt', u."createdAt",
-      'updatedAt', u."updatedAt"
-    ) "triggerUser"
+    select n.*
     from notification n
-    inner join public.user u on u._id = n."triggerId"
     where n."receiverId" = $1
     order by n."createdAt" DESC
     limit 10

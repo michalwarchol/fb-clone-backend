@@ -3,12 +3,14 @@ import {
   Arg,
   Ctx,
   Field,
+  FieldResolver,
   InputType,
   Int,
   Mutation,
   ObjectType,
   Query,
   Resolver,
+  Root,
   UseMiddleware,
 } from "type-graphql";
 import { MyContext } from "src/types";
@@ -41,8 +43,14 @@ class PaginatedPosts {
   hasMore: boolean;
 }
 
-@Resolver()
+@Resolver(Post)
 export class PostResolver {
+
+  @FieldResolver()
+  creator(@Root() post: Post, @Ctx(){userLoader}: MyContext){
+    return userLoader.load(post.creatorId);
+  }
+
   @Query(() => PaginatedPosts)
   async posts(
     @Arg("limit", () => Int) limit: number,
@@ -59,18 +67,8 @@ export class PostResolver {
 
     const posts = await getConnection().query(
       `
-    select p.*,
-    json_build_object(
-      '_id', u._id,
-      'username', u.username,
-      'email', u.email,
-      'avatarId', u."avatarId",
-      'bannerId', u."bannerId",
-      'createdAt', u."createdAt",
-      'updatedAt', u."updatedAt"
-      ) creator
+    select p.*
     from post p
-    inner join public.user u on u._id = p."creatorId"
     ${cursor ? `where p."createdAt" < $2` : ""}
     order by p."createdAt" DESC
     limit $1
@@ -106,18 +104,8 @@ export class PostResolver {
 
     const posts = await getConnection().query(
       `
-        select p.*,
-        json_build_object(
-          '_id', u._id,
-          'username', u.username,
-          'email', u.email,
-          'avatarId', u."avatarId",
-          'bannerId', u."bannerId",
-          'createdAt', u."createdAt",
-          'updatedAt', u."updatedAt"
-        ) creator
+        select p.*
         from post p
-        inner join public.user u on u._id = p."creatorId"
         where p."creatorId" = $1 ${cursor ? `and p."createdAt" < $3` : ""}
         order by "createdAt" DESC
         limit $2

@@ -1,4 +1,4 @@
-import { Arg, Ctx, Field, Int, Mutation, ObjectType, Query, Resolver, UseMiddleware } from "type-graphql";
+import { Arg, Ctx, Field, FieldResolver, Int, Mutation, ObjectType, Query, Resolver, Root, UseMiddleware } from "type-graphql";
 import { getConnection } from "typeorm";
 import { Comment } from "../entities/Comment";
 import { isAuth } from "../middleware/isAuth";
@@ -15,6 +15,12 @@ class PaginatedComments {
 
 @Resolver(Comment)
 export class CommentResolver {
+
+  @FieldResolver()
+  creator(@Root() comment: Comment, @Ctx(){userLoader}: MyContext){
+    return userLoader.load(comment.creatorId);
+  }
+
   @Query(() => PaginatedComments)
   async getPostComments(
     @Arg("postId", () => Int) postId: number,
@@ -33,18 +39,8 @@ export class CommentResolver {
 
     const comments = await getConnection().query(
       `
-      select c.*,
-    json_build_object(
-      '_id', u._id,
-      'username', u.username,
-      'email', u.email,
-      'avatarId', u."avatarId",
-      'bannerId', u."bannerId",
-      'createdAt', u."createdAt",
-      'updatedAt', u."updatedAt"
-      ) creator
+      select c.*
     from comment c
-    inner join public.user u on u._id = c."creatorId"
     where c."postId" = $1 ${cursor ? ` and c."createdAt" < $3` : ``}
     order by c."createdAt" DESC
     limit $2
