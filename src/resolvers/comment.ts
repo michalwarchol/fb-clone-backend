@@ -1,6 +1,7 @@
 import { Arg, Ctx, Field, FieldResolver, Int, Mutation, ObjectType, Query, Resolver, Root, UseMiddleware } from "type-graphql";
 import { getConnection } from "typeorm";
 import { Comment } from "../entities/Comment";
+import { User } from "../entities/User";
 import { isAuth } from "../middleware/isAuth";
 import { MyContext } from "../types";
 
@@ -16,7 +17,7 @@ class PaginatedComments {
 @Resolver(Comment)
 export class CommentResolver {
 
-  @FieldResolver()
+  @FieldResolver(()=>User)
   creator(@Root() comment: Comment, @Ctx(){userLoader}: MyContext){
     return userLoader.load(comment.creatorId);
   }

@@ -13,6 +13,7 @@ import {
 } from "type-graphql";
 import { getConnection } from "typeorm";
 import { Notification, NotificationType } from "../entities/Notification";
+import { User } from "../entities/User";
 import { isAuth } from "../middleware/isAuth";
 import { MyContext } from "../types";
 
@@ -37,7 +38,7 @@ class NotificationInput {
 @Resolver(Notification)
 export class NotificationResolver {
 
-  @FieldResolver()
+  @FieldResolver(()=>User)
   triggerUser(@Root() notification: Notification, @Ctx(){userLoader}: MyContext){
     return userLoader.load(notification.triggerId);
   }
