@@ -1,4 +1,5 @@
 import { Post } from "../entities/Post";
+import {User} from "../entities/User";
 import {
   Arg,
   Ctx,
@@ -46,7 +47,7 @@ class PaginatedPosts {
 @Resolver(Post)
 export class PostResolver {
 
-  @FieldResolver()
+  @FieldResolver(()=>User)
   creator(@Root() post: Post, @Ctx(){userLoader}: MyContext){
     return userLoader.load(post.creatorId);
   }
@@ -54,7 +55,8 @@ export class PostResolver {
   @Query(() => PaginatedPosts)
   async posts(
     @Arg("limit", () => Int) limit: number,
-    @Arg("cursor", () => String, { nullable: true }) cursor: string | null
+    @Arg("cursor", () => String, { nullable: true }) cursor: string | null,
+    @Arg("creatorId", ()=>Int, {nullable: true}) creatorId: number|null,
   ): Promise<PaginatedPosts> {
     const realLimit = Math.min(50, limit);
     const reaLimitPlusOne = realLimit + 1;
@@ -65,11 +67,25 @@ export class PostResolver {
       replacements.push(new Date(parseInt(cursor)));
     }
 
+    if(creatorId){
+      replacements.push(creatorId);
+    }
+
+    let conditions = "";
+    if(cursor && creatorId){
+      conditions = `where p."createdAt" < $2 AND p."creatorId" = $3`;
+    }else if(cursor && !creatorId){
+      conditions = `where p."createdAt" < $2`;
+    } else if(!cursor && creatorId){
+      conditions = `where p."creatorId" = $2`;
+    }
+
+
     const posts = await getConnection().query(
       `
     select p.*
     from post p
-    ${cursor ? `where p."createdAt" < $2` : ""}
+    ${conditions}
     order by p."createdAt" DESC
     limit $1
     `,
@@ -84,38 +100,6 @@ export class PostResolver {
   @Query(() => Post, { nullable: true })
   async post(@Arg("id", () => Int) id: number): Promise<Post | undefined> {
     return Post.findOne({ _id: id });
-  }
-
-  @Query(()=>PaginatedPosts)
-  async getPostsByCreatorId(
-    @Arg("creatorId", ()=>Int) creatorId: number,
-    @Arg("limit", () => Int) limit: number,
-    @Arg("cursor", () => String, { nullable: true }) cursor: string | null
-  ): Promise<PaginatedPosts>{
-
-    const realLimit = Math.min(50, limit);
-    const reaLimitPlusOne = realLimit + 1;
-
-    const replacements: any[] = [creatorId, reaLimitPlusOne];
-
-    if (cursor) {
-      replacements.push(new Date(parseInt(cursor)));
-    }
-
-    const posts = await getConnection().query(
-      `
-        select p.*
-        from post p
-        where p."creatorId" = $1 ${cursor ? `and p."createdAt" < $3` : ""}
-        order by "createdAt" DESC
-        limit $2
-      `,  replacements
-    )
-
-    return {
-      posts: posts.slice(0, realLimit),
-      hasMore: posts.length === reaLimitPlusOne,
-    };
   }
 
   @Mutation(() => Post)
