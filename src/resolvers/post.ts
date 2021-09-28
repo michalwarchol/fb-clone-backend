@@ -162,10 +162,12 @@ export class PostResolver {
     @Ctx() { s3 }: MyContext,
     @Arg("imageId", ()=>String) imageId: string
   ): Promise<string|null>{
-    const image = s3.getSignedUrl("getObject", {Bucket: process.env.AWS_BUCKET_NAME, Key: imageId});
+    const image = await s3.getObject({Bucket: process.env.AWS_BUCKET_NAME,
+      Key: imageId}).promise();
     if(!image){
       return null;
     }
-    return image;
+    //image.Body is a Buffer so I convert it to base64
+    return image.Body?.toString('base64') || null;
   }
 }

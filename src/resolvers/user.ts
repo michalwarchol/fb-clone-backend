@@ -84,6 +84,11 @@ export class UserResolver {
     return "";
   }
 
+  @Query(() => [User])
+  async getUsers() {
+    return User.find({});
+  }
+
   @Query(() => User, { nullable: true })
   async getUserById(
     @Arg("id", () => Int) id: number
@@ -96,9 +101,8 @@ export class UserResolver {
     @Ctx() { req, s3 }: MyContext,
     @Arg("username", () => String) username: string
   ): Promise<SearchedUser[]> {
-
-    if(username.length<1){
-      return []
+    if (username.length < 1) {
+      return [];
     }
 
     const searchedUsers = await getConnection()
@@ -111,20 +115,23 @@ export class UserResolver {
       .limit(6)
       .getMany();
 
-    const users = searchedUsers.map((user) => {
-      const avatarImage = !!user.avatarId
-        ? s3.getSignedUrl("getObject", {
-            Bucket: process.env.AWS_BUCKET_NAME,
-            Key: user.avatarId,
-          })
-        : null;
-      return {
-        _id: user._id,
-        username: user.username,
-        avatarImage,
-      };
-    });
-
+    const users = await Promise.all(
+      searchedUsers.map(async (user) => {
+        const img = !!user.avatarId
+          ? await s3
+              .getObject({
+                Bucket: process.env.AWS_BUCKET_NAME,
+                Key: user.avatarId,
+              })
+              .promise()
+          : null;
+        return {
+          _id: user._id,
+          username: user.username,
+          avatarImage: img?.Body ? img.Body.toString("base64") : null,
+        };
+      })
+    );
     return users;
   }
 
@@ -178,27 +185,31 @@ export class UserResolver {
     if (!req.session.userId) {
       return null;
     }
-
     const user = await User.findOne({ _id: req.session.userId });
-    let avatarImage = null;
-    let bannerImage = null;
+    let avatar = null;
+    let banner = null;
     if (!!user?.avatarId) {
-      avatarImage = s3.getSignedUrl("getObject", {
-        Bucket: process.env.AWS_BUCKET_NAME,
-        Key: user.avatarId,
-      });
+      avatar = await s3
+        .getObject({
+          Bucket: process.env.AWS_BUCKET_NAME,
+          Key: user.avatarId,
+        })
+        .promise();
     }
+
     if (!!user?.bannerId) {
-      bannerImage = s3.getSignedUrl("getObject", {
-        Bucket: process.env.AWS_BUCKET_NAME,
-        Key: user.bannerId,
-      });
+      banner = await s3
+        .getObject({
+          Bucket: process.env.AWS_BUCKET_NAME,
+          Key: user.bannerId,
+        })
+        .promise();
     }
 
     return {
       user,
-      avatarImage,
-      bannerImage,
+      avatarImage: avatar?.Body ? avatar.Body.toString("base64") : null,
+      bannerImage: banner?.Body ? banner.Body.toString("base64") : null,
     };
   }
 
@@ -434,26 +445,31 @@ export class UserResolver {
 
     //log in user after change password
     req.session.userId = user._id;
-    let avatarImage = null;
-    let bannerImage = null;
+    let avatar = null;
+    let banner = null;
     if (!!user?.avatarId) {
-      avatarImage = s3.getSignedUrl("getObject", {
-        Bucket: process.env.AWS_BUCKET_NAME,
-        Key: user.avatarId,
-      });
+      avatar = await s3
+        .getObject({
+          Bucket: process.env.AWS_BUCKET_NAME,
+          Key: user.avatarId,
+        })
+        .promise();
     }
+
     if (!!user?.bannerId) {
-      bannerImage = s3.getSignedUrl("getObject", {
-        Bucket: process.env.AWS_BUCKET_NAME,
-        Key: user.bannerId,
-      });
+      banner = await s3
+        .getObject({
+          Bucket: process.env.AWS_BUCKET_NAME,
+          Key: user.bannerId,
+        })
+        .promise();
     }
 
     return {
       loggedUser: {
         user,
-        avatarImage,
-        bannerImage,
+        avatarImage: avatar?.Body ? avatar.Body.toString("base64") : null,
+        bannerImage: banner?.Body ? banner.Body.toString("base64") : null,
       },
     };
   }
