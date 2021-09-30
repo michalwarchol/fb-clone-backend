@@ -14,8 +14,7 @@ import {
   Root,
 } from "type-graphql";
 import bcrypt from "bcrypt";
-import { COOKIE_NAME, FORGET_PASSWORD_PREFIX } from "../constants";
-import { sendEmail } from "../utils/sendEmail";
+import { COOKIE_NAME } from "../constants";
 import { v4 } from "uuid";
 import { getConnection } from "typeorm";
 import { FileUpload, GraphQLUpload } from "graphql-upload";
@@ -370,107 +369,5 @@ export class UserResolver {
         resolve(true);
       });
     });
-  }
-
-  @Mutation(() => Boolean)
-  async forgotPassword(
-    @Arg("email") email: string,
-    @Ctx() { redis }: MyContext
-  ) {
-    const user = await User.findOne({ where: { email } });
-    if (!user) {
-      return false;
-    }
-
-    const token = v4();
-    await redis.set(
-      FORGET_PASSWORD_PREFIX + token,
-      user._id,
-      "ex",
-      1000 * 60 * 60 * 24 * 3
-    ); //3 days
-
-    await sendEmail(
-      email,
-      `<a href="http://localhost:3000/change-password/${token}">reset password</a>`
-    );
-
-    return true;
-  }
-
-  @Mutation(() => UserResponse)
-  async changePassword(
-    @Arg("token") token: string,
-    @Arg("newPassword") newPassword: string,
-    @Ctx() { redis, req, s3 }: MyContext
-  ): Promise<UserResponse> {
-    if (newPassword.length < 6) {
-      return {
-        errors: [
-          { field: "newPassword", message: "length must be greater than 5" },
-        ],
-      };
-    }
-    const userId = await redis.get(FORGET_PASSWORD_PREFIX + token);
-    if (!userId) {
-      return {
-        errors: [
-          {
-            field: "token",
-            message: "token expired",
-          },
-        ],
-      };
-    }
-
-    const user = await User.findOne({ _id: parseInt(userId) });
-    if (!user) {
-      return {
-        errors: [
-          {
-            field: "token",
-            message: "user no longer exists",
-          },
-        ],
-      };
-    }
-
-    const salt = await bcrypt.genSalt(10);
-    await User.update(
-      { _id: user._id },
-      { password: await bcrypt.hash(newPassword, salt) }
-    );
-
-    await redis.del(FORGET_PASSWORD_PREFIX + token);
-
-    //log in user after change password
-    req.session.userId = user._id;
-    let avatar = null;
-    let banner = null;
-    if (!!user?.avatarId) {
-      avatar = await s3
-        .getObject({
-          Bucket: process.env.AWS_BUCKET_NAME,
-          Key: user.avatarId,
-        })
-        .promise();
-    }
-
-    if (!!user?.bannerId) {
-      banner = await s3
-        .getObject({
-          Bucket: process.env.AWS_BUCKET_NAME,
-          Key: user.bannerId,
-        })
-        .promise();
-    }
-
-    return {
-      loggedUser: {
-        user,
-        avatarImage: avatar?.Body ? avatar.Body.toString("base64") : null,
-        bannerImage: banner?.Body ? banner.Body.toString("base64") : null,
-      },
-    };
   }
 }
