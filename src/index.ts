@@ -27,28 +27,31 @@ import { StoryResolver } from "./resolvers/story";
 import { NotificationResolver } from "./resolvers/notification";
 import { Notification } from "./entities/Notification";
 import { createUserLoader } from "./utils/createUserLoader";
+import path from "path";
 
 const main = async () => {
 
-  await createConnection({
+  const conn = await createConnection({
     type: "postgres",
-    database: "fbclone2",
-    username: "postgres",
-    password: process.env.POSTGRESQL_PASSWORD,
+    url: process.env.DATABASE_URL,
     logging: true,
-    synchronize: true,
+    //synchronize: true,
+    migrations: [path.join(__dirname, "./migrations/*")],
     entities: [Post, User, Reaction, Comment, FriendRequest, Story, Notification]
   })
+  await conn.runMigrations()
 
   const app = express();
 
   const RedisStore = connectRedis(session);
-  const redis = new Redis();
+  const redis = new Redis(process.env.REDIS_URL);
 
   app.use(cors({
-    origin: "http://localhost:3000",
+    origin: process.env.CORS_ORIGIN,
     credentials: true
   }))
+
+  app.set("trust proxy", 1);
 
   app.use(
     session({
@@ -62,9 +65,10 @@ const main = async () => {
         httpOnly: true,
         sameSite: "lax", // csrf
         secure: __prod__, // cookie only works in https
+        domain: __prod__ ? ".clone-book.com" : undefined
       },
       saveUninitialized: false,
-      secret: "qowiueojwojfalksdjoqiwueo",
+      secret: process.env.SESSION_SECRET,
       resave: false,
     })
   );
@@ -91,7 +95,7 @@ const main = async () => {
     cors: false
   });
 
-  app.listen(4000, () => {
+  app.listen(parseInt(process.env.PORT), () => {
     console.log("Server started at localhost:4000");
   });
 };
