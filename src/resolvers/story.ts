@@ -11,8 +11,9 @@ import {
   Root,
   UseMiddleware,
 } from "type-graphql";
-import { getConnection } from "typeorm";
+import { Brackets, getConnection } from "typeorm";
 import { v4 } from "uuid";
+import { FriendRequest } from "../entities/FriendRequest";
 import { Story } from "../entities/Story";
 import { User } from "../entities/User";
 import { isAuth } from "../middleware/isAuth";
@@ -20,25 +21,23 @@ import { MyContext } from "../types";
 
 @InputType()
 class StoryInput {
-
-  @Field({nullable: true})
+  @Field({ nullable: true })
   text?: string;
 
-  @Field({nullable: true})
+  @Field({ nullable: true })
   font?: string;
 
-  @Field({nullable: true})
+  @Field({ nullable: true })
   gradient?: string;
 
-  @Field({nullable: true})
+  @Field({ nullable: true })
   time?: number;
 }
 
 @Resolver(Story)
 export class StoryResolver {
-
-  @FieldResolver(()=>User)
-  creator(@Root() story: Story, @Ctx(){userLoader}: MyContext){
+  @FieldResolver(() => User)
+  creator(@Root() story: Story, @Ctx() { userLoader }: MyContext) {
     return userLoader.load(story.userId);
   }
 
@@ -47,32 +46,46 @@ export class StoryResolver {
     return Story.find({});
   }
 
-  @Query(()=>[Story])
+  @Query(() => [Story])
   @UseMiddleware(isAuth)
-  async getRecentStories(
-    @Ctx() {req}: MyContext
-  ): Promise<Story[]>{
+  async getRecentStories(@Ctx() { req }: MyContext): Promise<Story[]> {
+    const id = req.session.userId;
+    const date = new Date(new Date().setDate(new Date().getDate() - 3));
 
-    let replacements: any = ["accepted", req.session.userId];
-    let now = new Date();
-    let threeDaysAgo = now.setDate(now.getDate()-3);
-    replacements.push(new Date(threeDaysAgo));
+    const stories = await getConnection()
+      .getRepository(Story)
+      .createQueryBuilder()
+      .where((sq) => {
+        const subQuery = sq
+          .subQuery()
+          .select("1")
+          .from(FriendRequest, "fr")
+          .where(
+            new Brackets((qb) => {
+              qb.where(
+                new Brackets((qb1) => {
+                  qb1
+                    .where('fr.sender = "userId"')
+                    .andWhere("fr.receiver = :id", { id });
+                })
+              ).orWhere(
+                new Brackets((qb2) => {
+                  qb2
+                    .where("fr.sender = :id", { id })
+                    .andWhere('fr.receiver = "userId"');
+                })
+              );
+            })
+          )
+          .andWhere("fr.status = :status", { status: "accepted" })
+          .getQuery();
+        return "EXISTS " + subQuery;
+      })
+      .andWhere('"createdAt" > :date', { date })
+      .orderBy('"userId"', "ASC")
+      .addOrderBy('"createdAt"', "ASC")
+      .getMany();
 
-
-    const stories = await getConnection().query(
-      `
-        SELECT s.*
-        FROM story s
-        WHERE EXISTS (
-          SELECT 1 FROM friend_request
-          WHERE ((friend_request.sender = s."userId" AND friend_request.receiver = $2) 
-          OR (friend_request.sender = $2 AND friend_request.receiver = s."userId"))
-          AND friend_request.status = $1
-        )
-        AND s."createdAt" > $3
-        ORDER BY s."userId" ASC, s."createdAt" ASC; 
-      `, replacements
-    )
     return stories;
   }
 
@@ -96,9 +109,9 @@ export class StoryResolver {
     }
 
     return Story.create({
-        ...input,
-        userId: req.session.userId,
-        imageId
+      ...input,
+      userId: req.session.userId,
+      imageId,
     }).save();
   }
 }
