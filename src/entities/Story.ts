@@ -7,41 +7,41 @@ import { User } from "./User";
 export class Story extends BaseEntity {
     @Field()
     @PrimaryGeneratedColumn()
-    _id!: number;
+      _id!: number;
 
     @Field()
     @Column()
-    userId!: number;
+      userId!: number;
 
     @Field(()=>User)
     @ManyToOne(()=>User, user=>user.stories)
-    creator: User;
+      creator: User;
 
     @Field({nullable: true})
     @Column({nullable: true, default: null})
-    text: string;
+      text: string;
 
     @Field({nullable: true})
     @Column({nullable: true, default: null})
-    font: string;
+      font: string;
 
     @Field({nullable: true})
     @Column({nullable: true, default: null})
-    gradient: string;
+      gradient: string;
 
     @Field()
     @Column({default: 5000})
-    time: number;
+      time: number;
 
     @Field({nullable: true})
     @Column({nullable: true, default: null})
-    imageId: string;
+      imageId: string;
 
     @Field(()=> String)
     @CreateDateColumn()
-    createdAt!: Date;
+      createdAt!: Date;
 
     @Field(()=> String)
     @UpdateDateColumn()
-    updatedAt!: Date;
+      updatedAt!: Date;
 }

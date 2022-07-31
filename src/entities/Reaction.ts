@@ -16,27 +16,27 @@ export class Reaction extends BaseEntity {
 
   @Field(()=>Int)
   @PrimaryGeneratedColumn()
-  _id!: number;
+    _id!: number;
 
   @Field()
   @Column()
-  reaction!: string;
+    reaction!: string;
 
   @Field(()=>Int)
   @Column({type: "int"})
-  value!: number;
+    value!: number;
 
   @Field(()=>Int)
   @PrimaryColumn()
-  userId!: number;
+    userId!: number;
 
   @ManyToOne(() => User, (user) => user.reactions)
-  user!: User;
+    user!: User;
 
   @Field(()=>Int)
   @PrimaryColumn()
-  postId!: number;
+    postId!: number;
 
   @ManyToOne(() => Post, (post) => post.reactions)
-  post!: Post;
+    post!: Post;
 }

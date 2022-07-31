@@ -11,8 +11,8 @@ import session from "express-session";
 import connectRedis from "connect-redis";
 import { MyContext } from "./types";
 import cors from "cors";
-import {createConnection} from "typeorm"
-import {S3} from "aws-sdk"
+import {createConnection} from "typeorm";
+import {S3} from "aws-sdk";
 import { User } from "./entities/User";
 import { Post } from "./entities/Post";
 import { Reaction } from "./entities/Reaction";
@@ -31,15 +31,13 @@ import path from "path";
 
 const main = async () => {
 
-  const conn = await createConnection({
+  await createConnection({
     type: "postgres",
     url: process.env.DATABASE_URL,
     logging: true,
-    //synchronize: true,
     migrations: [path.join(__dirname, "./migrations/*")],
     entities: [Post, User, Reaction, Comment, FriendRequest, Story, Notification]
-  })
-  await conn.runMigrations()
+  });
 
   const app = express();
 
@@ -49,7 +47,7 @@ const main = async () => {
   app.use(cors({
     origin: process.env.CORS_ORIGIN,
     credentials: true
-  }))
+  }));
 
   app.set("trust proxy", 1);
 
@@ -77,7 +75,7 @@ const main = async () => {
     accessKeyId: process.env.AWS_ID,
     secretAccessKey: process.env.AWS_SECRET,
     region: process.env.AWS_REGION
-  })
+  });
 
   app.use(graphqlUploadExpress({ maxFileSize: 100000 * 20, maxFiles: 10 }));
 

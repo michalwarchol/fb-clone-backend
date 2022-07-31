@@ -9,10 +9,14 @@
     "start": "node dist/index.js",
     "watch": "tsc -w",
     "dev": "nodemon dist/index.js",
-    "dev2": "nodemon --exec ts-node src/index.ts"
+    "dev2": "nodemon --exec ts-node src/index.ts",
+    "typeorm": "node --require ts-node/register ./node_modules/typeorm/cli.js",
+    "migration:generate": "typeorm migration:generate -d src/migrations -n migration",
+    "lint:ts": "npx eslint src/**/*.ts",
+    "fix:ts": "npx eslint src/**/*.ts --fix"
   },
   "keywords": [],
-  "author": "",
+  "author": "Michał Warchoł <mwarchol33@gmail.com>",
   "license": "ISC",
   "devDependencies": {
     "@types/bcrypt": "^5.0.0",
@@ -23,9 +27,14 @@
     "@types/graphql-upload": "^8.0.6",
     "@types/node": "^15.12.5",
     "@types/nodemailer": "^6.4.4",
-    "@types/redis": "^2.8.30",
+    "@types/redis": "^4.0.11",
     "@types/uuid": "^8.3.1",
+    "@typescript-eslint/eslint-plugin": "^5.31.0",
+    "@typescript-eslint/parser": "^5.31.0",
+    "eslint": "^8.20.0",
+    "eslint-plugin-prettier": "^4.2.1",
     "nodemon": "^2.0.7",
+    "prettier": "^2.7.1",
     "ts-node": "^10.0.0",
     "typescript": "^4.3.4"
   },
@@ -49,5 +58,7 @@
     "type-graphql": "^1.1.1",
     "typeorm": "^0.2.34",
     "uuid": "^8.3.2"
-  }
+  },
+  "repository": "https://github.com/michalwarchol/fb-clone-backend.git",
+  "private": false
 }

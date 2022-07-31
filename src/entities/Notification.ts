@@ -29,45 +29,45 @@ registerEnumType(NotificationType, {
 export class Notification extends BaseEntity {
   @Field(() => Int)
   @PrimaryGeneratedColumn()
-  _id!: number;
+    _id!: number;
 
   @Field(() => String)
   @Column()
-  info!: string;
+    info!: string;
 
   @Field(() => NotificationType)
   @Column()
-  type!: NotificationType;
+    type!: NotificationType;
 
   @Field(() => String)
   @Column({default: "sent"})
-  status: "received" | "sent"; //if user have seen the notification it will change to "received"
+    status: "received" | "sent"; //if user have seen the notification it will change to "received"
 
   @Field(() => Int)
   @Column()
-  receiverId!: number;
+    receiverId!: number;
 
   @Field(()=>Int, {nullable: true})
   @Column({nullable: true})
-  postId: number;
+    postId: number;
 
   @Field(()=>Int)
   @Column({default: null, nullable: true})
-  triggerId: number;
+    triggerId: number;
 
   @Field(()=>User)
   @ManyToOne(() => User, (user) => user.triggers)
-  triggerUser: User;
+    triggerUser: User;
   
   @Field(() => String)
   @Column({ default: "#" })
-  link!: string;
+    link!: string;
 
   @Field(() => String)
   @CreateDateColumn()
-  createdAt!: Date;
+    createdAt!: Date;
 
   @Field(() => String)
   @UpdateDateColumn()
-  updatedAt!: Date;
+    updatedAt!: Date;
 }

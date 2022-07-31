@@ -22,55 +22,55 @@ import { FileUpload, GraphQLUpload } from "graphql-upload";
 @InputType()
 class Credentials {
   @Field()
-  username: string;
+    username: string;
 
   @Field()
-  email: string;
+    email: string;
 
   @Field()
-  password: string;
+    password: string;
 }
 
 @ObjectType()
 class FieldError {
   @Field()
-  field: string;
+    field: string;
 
   @Field()
-  message: string;
+    message: string;
 }
 
 @ObjectType()
 class FullUser {
   @Field(() => User, { nullable: true })
-  user: User;
+    user: User;
 
   @Field(() => String, { nullable: true })
-  avatarImage: string | null;
+    avatarImage: string | null;
 
   @Field(() => String, { nullable: true })
-  bannerImage: string | null;
+    bannerImage: string | null;
 }
 
 @ObjectType()
 class SearchedUser {
   @Field(() => Int)
-  _id: number;
+    _id: number;
 
   @Field(() => String)
-  username: string;
+    username: string;
 
   @Field(() => String, { nullable: true })
-  avatarImage: string | null;
+    avatarImage: string | null;
 }
 
 @ObjectType()
 class UserResponse {
   @Field(() => [FieldError], { nullable: true })
-  errors?: FieldError[];
+    errors?: FieldError[];
 
   @Field(() => FullUser, { nullable: true })
-  loggedUser?: FullUser;
+    loggedUser?: FullUser;
 }
 
 @Resolver(User)
@@ -100,6 +100,8 @@ export class UserResolver {
     @Ctx() { req, s3 }: MyContext,
     @Arg("username", () => String) username: string
   ): Promise<SearchedUser[]> {
+    const userId = req.session.userId;
+
     if (username.length < 1) {
       return [];
     }
@@ -109,20 +111,18 @@ export class UserResolver {
       .createQueryBuilder()
       .where("LOWER(username) like LOWER(:username) AND _id != :id", {
         username: `%${username}%`,
-        id: req.session.userId,
+        id: userId,
       })
       .limit(6)
       .getMany();
 
     const users = await Promise.all(
       searchedUsers.map(async (user) => {
-        const img = !!user.avatarId
-          ? await s3
-              .getObject({
-                Bucket: process.env.AWS_BUCKET_NAME,
-                Key: user.avatarId,
-              })
-              .promise()
+        const img = user.avatarId
+          ? await s3.getObject({
+            Bucket: process.env.AWS_BUCKET_NAME,
+            Key: user.avatarId,
+          }).promise()
           : null;
         return {
           _id: user._id,
@@ -140,75 +140,60 @@ export class UserResolver {
     @Arg("image", () => GraphQLUpload, { nullable: true }) image: FileUpload,
     @Arg("avatarOrBanner", () => String) avatarOrBanner: "avatar" | "banner"
   ): Promise<string> {
-    const user = await User.findOne({ _id: req.session.userId });
+    const userId = req.session.userId;
+    const user = await User.findOne({ _id: userId });
 
-    if (avatarOrBanner == "avatar") {
-      if (!!user?.avatarId) {
-        await s3
-          .deleteObject({
-            Bucket: process.env.AWS_BUCKET_NAME,
-            Key: user?.avatarId,
-          })
-          .promise();
-      }
-    } else {
-      if (!!user?.bannerId) {
-        await s3
-          .deleteObject({
-            Bucket: process.env.AWS_BUCKET_NAME,
-            Key: user?.bannerId,
-          })
-          .promise();
-      }
-    }
+    const imageId = avatarOrBanner === "avatar" ? user?.avatarId : user?.bannerId;
 
-    const imageId = v4();
-    await s3
-      .upload({
+    if (imageId) {
+      await s3.deleteObject({
         Bucket: process.env.AWS_BUCKET_NAME,
         Key: imageId,
-        Body: image.createReadStream(),
-      })
+      }).promise();
+    }
+
+    const newImageId = v4();
+    await s3.upload({
+      Bucket: process.env.AWS_BUCKET_NAME,
+      Key: newImageId,
+      Body: image.createReadStream(),
+    })
       .promise();
 
     await User.update(
-      { _id: req.session.userId },
-      avatarOrBanner == "avatar" ? { avatarId: imageId } : { bannerId: imageId }
+      { _id: userId },
+      avatarOrBanner === "avatar"
+        ? { avatarId: newImageId }
+        : { bannerId: newImageId }
     );
 
-    return imageId;
+    return newImageId;
   }
 
   @Query(() => FullUser, { nullable: true })
   async loggedUser(@Ctx() { req, s3 }: MyContext) {
+    const userId = req.session.userId;
+
     if (!req.session.userId) {
       return null;
     }
-    const user = await User.findOne({ _id: req.session.userId });
-    let avatar = null;
-    let banner = null;
-    if (!!user?.avatarId) {
-      avatar = await s3
-        .getObject({
-          Bucket: process.env.AWS_BUCKET_NAME,
-          Key: user.avatarId,
-        })
-        .promise();
-    }
 
-    if (!!user?.bannerId) {
-      banner = await s3
-        .getObject({
-          Bucket: process.env.AWS_BUCKET_NAME,
-          Key: user.bannerId,
-        })
-        .promise();
-    }
+    const user = await User.findOne({ _id: userId });
+
+    const avatar = !!user?.avatarId && await s3.getObject({
+      Bucket: process.env.AWS_BUCKET_NAME,
+      Key: user.avatarId,
+    }).promise();
+
+    const banner = !!user?.bannerId && await s3.getObject({
+      Bucket: process.env.AWS_BUCKET_NAME,
+      Key: user.bannerId,
+    }).promise();
 
     return {
       user,
-      avatarImage: avatar?.Body ? avatar.Body.toString("base64") : null,
-      bannerImage: banner?.Body ? banner.Body.toString("base64") : null,
+      avatarImage: avatar ? avatar.Body?.toString("base64") : null,
+      bannerImage: banner ? banner.Body?.toString("base64") : null,
     };
   }
 
@@ -245,33 +230,16 @@ export class UserResolver {
 
     const salt = await bcrypt.genSalt(10);
     const hash = await bcrypt.hash(credentials.password, salt);
-    let user;
+    let user = new User();
     try {
-      const result = await getConnection()
-        .createQueryBuilder()
-        .insert()
-        .into(User)
-        .values([
-          {
-            username: credentials.username,
-            password: hash,
-            email: credentials.email,
-            avatarId: "",
-            bannerId: "",
-          },
-        ])
-        .returning([
-          "_id",
-          "username",
-          "email",
-          "avatarId",
-          "bannerId",
-          "created_at as createdAt",
-          "updated_at as updatedAt",
-          "password",
-        ])
-        .execute();
-      user = result.raw[0];
+      user = User.create({
+        username: credentials.username,
+        password: hash,
+        email: credentials.email,
+        avatarId: "",
+        bannerId: "",
+      });
+      await User.insert(user);
     } catch (err) {
       if (
         err.detail.includes("already exists") &&
@@ -293,7 +261,7 @@ export class UserResolver {
       }
     }
     req.session.userId = user._id;
-
+    console.log(user);
     return {
       loggedUser: {
         user,
@@ -333,20 +301,20 @@ export class UserResolver {
     }
 
     req.session.userId = user._id;
-    let avatarImage = null;
-    let bannerImage = null;
-    if (!!user?.avatarId) {
-      avatarImage = s3.getSignedUrl("getObject", {
+
+    const avatarImage = user?.avatarId
+      ? s3.getSignedUrl("getObject", {
         Bucket: process.env.AWS_BUCKET_NAME,
         Key: user.avatarId,
-      });
-    }
-    if (!!user?.bannerId) {
-      bannerImage = s3.getSignedUrl("getObject", {
+      })
+      : null;
+
+    const bannerImage = user?.bannerId
+      ? s3.getSignedUrl("getObject", {
         Bucket: process.env.AWS_BUCKET_NAME,
         Key: user.bannerId,
-      });
-    }
+      })
+      : null;
 
     return {
       loggedUser: {
@@ -360,7 +328,7 @@ export class UserResolver {
   @Mutation(() => Boolean)
   logout(@Ctx() { req, res }: MyContext) {
     return new Promise((resolve) => {
-      req.session.destroy((err) => {
+      req.session.destroy((err: Error) => {
         res.clearCookie(COOKIE_NAME);
         if (err) {
           resolve(false);

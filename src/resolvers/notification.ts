@@ -11,7 +11,7 @@ import {
   Root,
   UseMiddleware,
 } from "type-graphql";
-import { getConnection } from "typeorm";
+import { In } from "typeorm";
 import { Notification, NotificationType } from "../entities/Notification";
 import { User } from "../entities/User";
 import { isAuth } from "../middleware/isAuth";
@@ -20,19 +20,19 @@ import { MyContext } from "../types";
 @InputType()
 class NotificationInput {
   @Field(() => String)
-  info!: string;
+    info!: string;
 
   @Field(() => NotificationType)
-  type!: NotificationType;
+    type!: NotificationType;
 
   @Field(() => Int)
-  receiverId!: number;
+    receiverId!: number;
 
   @Field(() => String, { nullable: true, defaultValue: "#" })
-  link: string;
+    link: string;
 
   @Field(() => Int, { nullable: true })
-  postId: number;
+    postId: number;
 }
 
 @Resolver(Notification)
@@ -53,16 +53,12 @@ export class NotificationResolver {
   async getUserNotifications(
     @Ctx() { req }: MyContext
   ): Promise<Notification[]> {
-    const notifications = await getConnection().query(
-      `
-    select n.*
-    from notification n
-    where n."receiverId" = $1
-    order by n."createdAt" DESC
-    limit 10
-    `,
-      [req.session.userId]
-    );
+    const userId = req.session.userId;
+    const notifications = await Notification.find({
+      where: { receiverId: userId },
+      order: { createdAt: "DESC" },
+      take: 10,
+    });
 
     return notifications;
   }
@@ -70,15 +66,12 @@ export class NotificationResolver {
   @Query(() => Int)
   @UseMiddleware(isAuth)
   async getNewNotificationsCount(@Ctx() { req }: MyContext): Promise<number> {
-    const count = await getConnection().query(
-      `
-        SELECT COUNT(_id)
-        FROM notification
-        WHERE "receiverId" = $1 AND status = $2;
-      `,
-      [req.session.userId, "sent"]
-    );
-    return count[0].count;
+    const userId = req.session.userId;
+    const count = Notification.count({
+      where: { receiverId: userId, status: "sent" },
+    });
+
+    return count;
   }
 
   @Mutation(() => Boolean)
@@ -87,22 +80,15 @@ export class NotificationResolver {
     @Ctx() { req }: MyContext,
     @Arg("input", () => NotificationInput) input: NotificationInput
   ): Promise<boolean> {
-
-    if(input.receiverId==req.session.userId){
+    const { receiverId, type, postId } = input;
+    const userId = req.session.userId;
+    if (receiverId === userId) {
       //user will not receive a notification after activities affecting himself
       return false;
     }
 
-    if (input.postId) {
-      const isInDb = await getConnection()
-        .getRepository(Notification)
-        .createQueryBuilder()
-        .where('type = :type AND "postId" = :postId AND "triggerId" = :triggerId', {
-          type: input.type,
-          postId: input.postId,
-          triggerId: req.session.userId,
-        })
-        .getOne();
+    if (postId) {
+      const isInDb = await Notification.findOne({where: {type, postId, triggerId: userId}});
       if (isInDb) {
         return false;
       }
@@ -111,6 +97,7 @@ export class NotificationResolver {
       triggerId: req.session.userId,
       ...input,
     }).save();
+
     return true;
   }
 
@@ -119,12 +106,7 @@ export class NotificationResolver {
   async updateNotificationStatus(
     @Arg("notifications", () => [Int]) notifications: number[]
   ): Promise<boolean> {
-    await getConnection()
-      .createQueryBuilder()
-      .update(Notification)
-      .set({ status: "received" })
-      .where("_id IN (:...notifications)", { notifications })
-      .execute();
+    await Notification.update({ _id: In(notifications) }, { status: "received" });
 
     return true;
   }
