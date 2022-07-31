@@ -1,6 +1,15 @@
 import { Field, Int, ObjectType } from "type-graphql";
-import { BaseEntity, Column, CreateDateColumn, Entity, OneToMany, PrimaryGeneratedColumn, UpdateDateColumn } from "typeorm";
+import {
+  BaseEntity,
+  Column,
+  CreateDateColumn,
+  Entity,
+  OneToMany,
+  PrimaryGeneratedColumn,
+  UpdateDateColumn,
+} from "typeorm";
 import { Comment } from "./Comment";
+import { FriendRequest } from "./FriendRequest";
 import { Notification } from "./Notification";
 import { Post } from "./Post";
 import { Reaction } from "./Reaction";
@@ -9,50 +18,55 @@ import { Story } from "./Story";
 @ObjectType()
 @Entity()
 export class User extends BaseEntity {
-
-  @Field(()=>Int)
+  @Field(() => Int)
   @PrimaryGeneratedColumn()
-  _id!: number;
+    _id!: number;
 
   @Field()
-  @Column({unique: true})
-  username!: string;
+  @Column({ unique: true })
+    username!: string;
 
   @Field()
-  @Column({unique: true})
-  email!: string;
+  @Column({ unique: true })
+    email!: string;
 
   @Column()
-  password!: string;
+    password!: string;
 
   @Field()
-  @Column({nullable: true})
-  avatarId!: string;
+  @Column({ nullable: true })
+    avatarId!: string;
 
   @Field()
-  @Column({nullable: true})
-  bannerId!: string;
+  @Column({ nullable: true })
+    bannerId!: string;
 
-  @OneToMany(() => Post, post => post.creator)
-  posts: Post[];
+  @OneToMany(() => Post, (post) => post.creator)
+    posts: Post[];
 
-  @OneToMany(() => Reaction, reaction=>reaction.user)
-  reactions: Reaction[];
+  @OneToMany(() => Reaction, (reaction) => reaction.user)
+    reactions: Reaction[];
 
-  @OneToMany(()=>Comment, comment=>comment.creator)
-  comments: Comment[];
+  @OneToMany(() => Comment, (comment) => comment.creator)
+    comments: Comment[];
 
-  @OneToMany(()=>Story, story=>story.creator)
-  stories: Story[];
+  @OneToMany(() => Story, (story) => story.creator)
+    stories: Story[];
 
-  @OneToMany(()=>Notification, notification=>notification.triggerUser)
-  triggers: Notification[];
+  @OneToMany(() => Notification, (notification) => notification.triggerUser)
+    triggers: Notification[];
 
-  @Field(()=> String)
-  @CreateDateColumn()
-  createdAt: Date;
+  @OneToMany(() => FriendRequest, (friendRequest) => friendRequest.sender)
+    senders: FriendRequest[];
   
-  @Field(()=> String)
+  @OneToMany(() => FriendRequest, (friendRequest) => friendRequest.receiver)
+    receivers: FriendRequest[];
+
+  @Field(() => String)
+  @CreateDateColumn()
+    createdAt: Date;
+
+  @Field(() => String)
   @UpdateDateColumn()
-  updatedAt: Date;
+    updatedAt: Date;
 }

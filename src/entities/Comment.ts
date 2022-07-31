@@ -9,33 +9,33 @@ export class Comment extends BaseEntity {
 
   @Field(()=>Int)
   @PrimaryGeneratedColumn()
-  _id: number;
+    _id: number;
 
   @Field()
   @Column()
-  text!: string;
+    text!: string;
 
   @Field()
   @PrimaryColumn()
-  creatorId!: number;
+    creatorId!: number;
 
   @Field()
   @ManyToOne(() => User, (user) => user.comments)
-  creator!: User;
+    creator!: User;
 
   @Field()
   @PrimaryColumn()
-  postId!: number;
+    postId!: number;
 
 
   @ManyToOne(() => Post, (post) => post.comments)
-  post!: Post;
+    post!: Post;
 
   @Field(() => String)
   @CreateDateColumn()
-  createdAt: Date;
+    createdAt: Date;
 
   @Field(() => String)
   @UpdateDateColumn()
-  updatedAt: Date;
+    updatedAt: Date;
 }

@@ -16,32 +16,32 @@ import {
 } from "type-graphql";
 import { MyContext } from "src/types";
 import { isAuth } from "../middleware/isAuth";
-import { getConnection } from "typeorm";
+import { LessThan, FindConditions } from "typeorm";
 import { v4 } from "uuid";
 import { FileUpload, GraphQLUpload } from "graphql-upload";
 
 @InputType()
 class PostInput {
   @Field()
-  text: string;
+    text: string;
 
   @Field()
-  feeling?: string;
+    feeling?: string;
 
   @Field()
-  activity?: string;
+    activity?: string;
 
   @Field(()=>[Int])
-  tagged: number[]
+    tagged: number[];
 }
 
 @ObjectType()
 class PaginatedPosts {
   @Field(() => [Post])
-  posts: Post[];
+    posts: Post[];
 
   @Field()
-  hasMore: boolean;
+    hasMore: boolean;
 }
 
 @Resolver(Post)
@@ -59,41 +59,27 @@ export class PostResolver {
     @Arg("creatorId", ()=>Int, {nullable: true}) creatorId: number|null,
   ): Promise<PaginatedPosts> {
     const realLimit = Math.min(50, limit);
-    const reaLimitPlusOne = realLimit + 1;
+    const realLimitPlusOne = realLimit + 1;
 
-    const replacements: any[] = [reaLimitPlusOne];
+    const where: FindConditions<Post> = {};
 
-    if (cursor) {
-      replacements.push(new Date(parseInt(cursor)));
+    if(cursor){
+      where.createdAt = LessThan(cursor);
     }
-
+    
     if(creatorId){
-      replacements.push(creatorId);
+      where.creatorId = creatorId;
     }
 
-    let conditions = "";
-    if(cursor && creatorId){
-      conditions = `where p."createdAt" < $2 AND p."creatorId" = $3`;
-    }else if(cursor && !creatorId){
-      conditions = `where p."createdAt" < $2`;
-    } else if(!cursor && creatorId){
-      conditions = `where p."creatorId" = $2`;
-    }
+    const posts = await Post.find({
+      where,
+      order: {createdAt: "DESC"},
+      take: realLimitPlusOne,
+    });
 
-
-    const posts = await getConnection().query(
-      `
-    select p.*
-    from post p
-    ${conditions}
-    order by p."createdAt" DESC
-    limit $1
-    `,
-      replacements
-    );
     return {
       posts: posts.slice(0, realLimit),
-      hasMore: posts.length === reaLimitPlusOne,
+      hasMore: posts.length === realLimitPlusOne,
     };
   }
 
@@ -141,7 +127,7 @@ export class PostResolver {
       return null;
     }
 
-    if (typeof text !== "undefined") {
+    if (text) {
       await Post.update({ _id: id }, { text: text });
     }
     return post;
@@ -168,6 +154,6 @@ export class PostResolver {
       return null;
     }
     //image.Body is a Buffer so I convert it to base64
-    return image.Body?.toString('base64') || null;
+    return image.Body?.toString("base64") || null;
   }
 }

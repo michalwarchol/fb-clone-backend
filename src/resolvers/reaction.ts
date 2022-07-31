@@ -10,7 +10,6 @@ import {
   Query,
   Resolver,
 } from "type-graphql";
-import { getConnection } from "typeorm";
 import { Post } from "../entities/Post";
 import { Reaction } from "../entities/Reaction";
 import { isAuth } from "../middleware/isAuth";
@@ -34,13 +33,10 @@ registerEnumType(ReactionType, {
 @InputType()
 class ReactionInput {
   @Field(() => ReactionType)
-  reaction: ReactionType;
+    reaction: ReactionType;
 
   @Field(() => Int)
-  postId: number;
-
-  @Field(() => Int)
-  value: number;
+    postId: number;
 }
 
 @Resolver(Reaction)
@@ -56,66 +52,34 @@ export class ReactionResolver {
     @Arg("variables", () => ReactionInput) variables: ReactionInput,
     @Ctx() { req }: MyContext
   ): Promise<boolean> {
-    const { value, postId, reaction } = variables;
+    const { postId, reaction } = variables;
     const userId = req.session.userId;
-    const isUpdoot = value !== -1;
-    const realValue = isUpdoot ? 1 : -1;
 
     const isInDb = await Reaction.findOne({
       postId,
       userId: req.session.userId,
     });
-    if (isInDb && isInDb.reaction == reaction) {
+
+    if(!isInDb) {
+      await Reaction.insert({ userId, postId, reaction, value: 1});
+      await Post.update({ _id: postId}, { [reaction]: () => "\"" + reaction + "\"" + "+ 1" });
+
+      return true;
+    }
+
+    if(isInDb.reaction == reaction) {
       await Reaction.delete({ postId, userId: req.session.userId });
-      await getConnection()
-        .createQueryBuilder()
-        .update(Post)
-        .set({ [reaction]: () => '"' + reaction + '"' + "-" + realValue })
-        .where({ _id: postId })
-        .execute();
-
-      return true;
-    }
-    if (isInDb && isInDb.reaction != reaction) {
-      await getConnection()
-        .createQueryBuilder()
-        .update(Reaction)
-        .set({ reaction: reaction })
-        .where({ userId, postId })
-        .execute();
-
-      await getConnection()
-        .createQueryBuilder()
-        .update(Post)
-        .set({
-          [reaction]: () => '"' + reaction + '"' + "+" + realValue,
-          [isInDb.reaction]: () => '"' + isInDb.reaction + '"' + "-" + realValue,
-        })
-        .where({ _id: postId })
-        .execute();
+      await Post.update({ _id: postId}, {[reaction]: () => "\"" + reaction + "\"" + "- 1"});
 
       return true;
     }
 
-    await getConnection()
-      .createQueryBuilder()
-      .insert()
-      .into(Reaction)
-      .values({
-        userId,
-        postId,
-        reaction: reaction,
-        value: realValue,
-      })
-      .execute();
-
-    await getConnection()
-      .createQueryBuilder()
-      .update(Post)
-      .set({ [reaction]: () => '"' + reaction + '"' + "+" + realValue })
-      .where({ _id: postId })
-      .execute();
-
+    await Reaction.update({ userId, postId}, { reaction });
+    await Post.update({_id: postId}, {
+      [reaction]: () => "\"" + reaction + "\"" + "+ 1",
+      [isInDb.reaction]: () => "\"" + isInDb.reaction + "\"" + "- 1",
+    });
+    
     return true;
   }
 

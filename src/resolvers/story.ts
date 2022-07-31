@@ -22,16 +22,16 @@ import { MyContext } from "../types";
 @InputType()
 class StoryInput {
   @Field({ nullable: true })
-  text?: string;
+    text?: string;
 
   @Field({ nullable: true })
-  font?: string;
+    font?: string;
 
   @Field({ nullable: true })
-  gradient?: string;
+    gradient?: string;
 
   @Field({ nullable: true })
-  time?: number;
+    time?: number;
 }
 
 @Resolver(Story)
@@ -42,7 +42,7 @@ export class StoryResolver {
   }
 
   @Query(() => [Story])
-  async getStories() {
+  async getStories(): Promise<Story[]> {
     return Story.find({});
   }
 
@@ -65,25 +65,29 @@ export class StoryResolver {
               qb.where(
                 new Brackets((qb1) => {
                   qb1
-                    .where('fr.sender = "userId"')
-                    .andWhere("fr.receiver = :id", { id });
+                    .where('fr.sender = "userId"') // eslint-disable-line quotes
+                    .andWhere("fr.receiver = :id");
                 })
               ).orWhere(
                 new Brackets((qb2) => {
                   qb2
-                    .where("fr.sender = :id", { id })
-                    .andWhere('fr.receiver = "userId"');
+                    .where("fr.sender = :id")
+                    .andWhere('fr.receiver = "userId"'); // eslint-disable-line quotes
                 })
               );
             })
           )
-          .andWhere("fr.status = :status", { status: "accepted" })
+          .andWhere("fr.status = :status")
           .getQuery();
+
         return "EXISTS " + subQuery;
       })
-      .andWhere('"createdAt" > :date', { date })
-      .orderBy('"userId"', "ASC")
-      .addOrderBy('"createdAt"', "ASC")
+      .andWhere('"createdAt" > :date') // eslint-disable-line quotes
+      .orderBy('"userId"', "ASC") // eslint-disable-line quotes
+      .addOrderBy('"createdAt"', "ASC") // eslint-disable-line quotes
+      .setParameter("date", date)
+      .setParameter("id", id)
+      .setParameter("status", "accepted")
       .getMany();
 
     return stories;
@@ -95,23 +99,20 @@ export class StoryResolver {
     @Ctx() { req, s3 }: MyContext,
     @Arg("input", () => StoryInput) input: StoryInput,
     @Arg("image", () => GraphQLUpload, { nullable: true }) image?: FileUpload
-  ) {
-    let imageId = undefined;
+  ): Promise<Story> {
+    const userId = req.session.userId as number;
+    const newStory = { ...new Story(), ...input, userId };
     if (image) {
-      imageId = v4();
+      newStory.imageId = v4();
       await s3
         .upload({
           Bucket: process.env.AWS_BUCKET_NAME,
-          Key: imageId,
+          Key: newStory.imageId,
           Body: image.createReadStream(),
         })
         .promise();
     }
 
-    return Story.create({
-      ...input,
-      userId: req.session.userId,
-      imageId,
-    }).save();
+    return Story.create(newStory).save();
   }
 }

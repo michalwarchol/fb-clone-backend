@@ -9,7 +9,7 @@ import {
   Resolver,
   UseMiddleware,
 } from "type-graphql";
-import { Brackets, getConnection } from "typeorm";
+import { getConnection, FindManyOptions, In, Brackets } from "typeorm";
 import { FriendRequest } from "../entities/FriendRequest";
 import { User } from "../entities/User";
 import { isAuth } from "../middleware/isAuth";
@@ -18,40 +18,40 @@ import { MyContext } from "../types";
 @ObjectType()
 class UserRequest {
   @Field(() => FriendRequest, { nullable: true })
-  friendRequest: FriendRequest | null;
+    friendRequest: FriendRequest | null;
 
   @Field()
-  isSender: boolean;
+    isSender: boolean;
 }
 
 @ObjectType()
 class FriendRequestWithFriend {
   @Field(() => FriendRequest)
-  friendRequest: FriendRequest;
+    friendRequest: FriendRequest;
 
-  @Field(() => User)
-  friend: User;
+  @Field(() => String)
+    friendRole: string;
 }
 
 @ObjectType()
 class FriendSuggestion {
   @Field(() => User)
-  friend: User;
+    friend: User;
 
   @Field(() => Int)
-  mutual: number;
+    mutual: number;
 }
 
 @ObjectType()
 class PaginatedRequests {
   @Field(() => [FriendRequestWithFriend])
-  friendRequestsWithFriends: FriendRequestWithFriend[];
+    friendRequestsWithFriends: FriendRequestWithFriend[];
 
   @Field(() => Boolean)
-  hasMore: boolean;
+    hasMore: boolean;
 
   @Field(() => Int)
-  mutualFriends: number;
+    mutualFriends: number;
 }
 
 @Resolver(FriendRequest)
@@ -61,30 +61,38 @@ export class FriendRequestResolver {
       return 0;
     }
 
-    const mutualFriends = await getConnection().query(
-      `
-        SELECT COUNT(status)
-        FROM friend_request fr
-        WHERE ((sender = $1 AND status = $3 AND receiver != $2) OR (receiver = $1 AND status = $3 AND sender != $2))
-        AND EXISTS(
-          SELECT 1
-          FROM friend_request fr2
-          WHERE ((fr2.receiver = fr.sender AND fr2.sender = $2 AND fr2.receiver != $1) OR
-          (fr2.receiver = fr.receiver AND fr2.sender = $2 AND fr2.receiver != $1) OR
-          (fr2.sender = fr.sender AND fr2.receiver = $2 AND fr2.sender != $1) OR
-          (fr2.sender = fr.receiver AND fr2.receiver = $2 AND fr2.sender != $1)
-          ) 
-          AND fr2.status = $3
-        )
-      `,
-      [me, userId, "accepted"]
-    );
-    return mutualFriends[0].count;
+    const mutualFriends = await getConnection()
+      .getRepository(FriendRequest)
+      .createQueryBuilder("request")
+      .where(new Brackets((qb) => {
+        qb.where("senderId = :me AND status = 'accepted' AND receiverId != :userId")
+          .orWhere("receiverId = :me AND status = 'accepted' AND senderId != :userId");
+      }))
+      .andWhere((qb) => {
+        const subquery = qb
+          .createQueryBuilder()
+          .addFrom("friend_request", "fr")
+          .where(new Brackets((qb) => {
+            qb.where("fr.receiverId = request.senderId AND fr.senderId = :userId AND fr.receiverId != :me")
+              .orWhere("fr.receiverId = request.receiver AND fr.senderId = :userId AND fr.receiverId != :me")
+              .orWhere("fr.senderId = request.senderId AND fr.receiverId = :userId AND fr.senderId != :me")
+              .orWhere("fr.senderId = request.receiverId AND fr.receiverId = :userId AND fr.senderId != :me");
+          }))
+          .andWhere("fr.status = 'accepted'")
+          .getQuery();
+
+        return `EXISTS (${subquery})`;
+      })
+      .setParameter("me", me)
+      .setParameter("userId", userId)
+      .getCount();
+
+    return mutualFriends;
   }
 
   @Query(() => [FriendRequest])
   async friendRequests(): Promise<FriendRequest[]> {
-    return FriendRequest.find({});
+    return FriendRequest.find({relations: ["sender", "receiver"]});
   }
 
   @Query(() => PaginatedRequests)
@@ -96,55 +104,38 @@ export class FriendRequestResolver {
     @Arg("skip", () => Int, { nullable: true }) skip?: number
   ): Promise<PaginatedRequests> {
     //if userId is not specified, it means that we want to take requests of a logged user
-    let id: number = req.session.userId as number;
-    if (userId) {
-      id = userId;
-    }
+    const id = userId || req.session.userId;
     const realLimit = Math.min(50, limit);
     const reaLimitPlusOne = realLimit + 1;
-
-    const friendRequests = getConnection()
-      .getRepository(FriendRequest)
-      .createQueryBuilder()
-      .where(
-        new Brackets((qb) => {
-          qb.where("sender = :userId", { userId: id }).orWhere(
-            "receiver = :userId",
-            { userId: id }
-          );
-        })
-      )
-      .andWhere("status like :progress", { progress: "accepted" })
-      .orderBy('"createdAt"', "DESC");
-
-    if (limit) {
-      friendRequests.take(reaLimitPlusOne);
-    }
+    const findOptions: FindManyOptions<FriendRequest> = {
+      where: [
+        { senderId: id, status: "accepted"},
+        { receiverId: id, status: "accepted"},
+      ],
+      order: { createdAt: "DESC" },
+      take: reaLimitPlusOne,
+    };
 
     if (skip) {
-      friendRequests.skip(skip);
+      findOptions.skip = skip;
     }
 
-    const frs = await friendRequests.getMany();
+    const friendRequests = await FriendRequest.find(findOptions);
 
-    const friendRequestsWithFriend = await Promise.all(
-      frs.map(async (fr) => {
-        let _id = fr.sender;
-        if (_id == id) _id = fr.receiver;
+    const friendRequestsWithFriend = friendRequests.map((fr) => {
+      const { senderId } = fr;
+      const friendRole = id === senderId ? "receiver" : "sender";
 
-        const friend = await User.findOne({ where: { _id } });
-
-        return {
-          friendRequest: fr,
-          friend: friend as User,
-        };
-      })
-    );
+      return {
+        friendRequest: fr,
+        friendRole,
+      };
+    });
 
     let mutualFriends = 0;
     if (userId) {
       mutualFriends = await this.getMutualFriendsCount(
-        req.session.userId!,
+        req.session.userId as number,
         userId
       );
     }
@@ -162,26 +153,13 @@ export class FriendRequestResolver {
     @Ctx() { req }: MyContext,
     @Arg("userId", () => Int) userId: number
   ): Promise<UserRequest> {
-    const request = await getConnection()
-      .getRepository(FriendRequest)
-      .createQueryBuilder("request")
-      .where(
-        new Brackets((qb) => {
-          qb.where("request.sender = :me", { me: req.session.userId }).andWhere(
-            "request.receiver = :user",
-            { user: userId }
-          );
-        })
-      )
-      .orWhere(
-        new Brackets((qb) => {
-          qb.where("request.sender = :user", { user: userId }).andWhere(
-            "request.receiver = :me",
-            { me: req.session.userId }
-          );
-        })
-      )
-      .getOne();
+    const id = req.session.userId;
+    const request = await FriendRequest.findOne({
+      where: [
+        { senderId: id, receiverId: userId },
+        { senderId: userId, receiverId: id },
+      ]
+    });
 
     if (!request) {
       return {
@@ -191,10 +169,7 @@ export class FriendRequestResolver {
     }
 
     //this user sent me a friend request
-    let isSender = false;
-    if (request.sender == userId) {
-      isSender = true;
-    }
+    const isSender = request.senderId === userId;
 
     return {
       friendRequest: request,
@@ -207,34 +182,35 @@ export class FriendRequestResolver {
   async getSuggestedFriendTags(
     @Ctx() { req }: MyContext,
     @Arg("searchName", () => String, { nullable: true }) searchName?: string
-  ) {
-    const friendRequests = await getConnection()
-      .getRepository(FriendRequest)
-      .createQueryBuilder()
-      .where("sender = :me", { me: req.session.userId })
-      .orWhere("receiver = :me", { me: req.session.userId })
-      .getMany();
+  ): Promise<FriendRequestWithFriend[]> {
+    const userId = req.session.userId;
+    const friendRequests = await FriendRequest.find({
+      where: [
+        { senderId: userId },
+        { receiverId: userId },
+      ],
+      relations: ["receiver", "sender"]
+    });
 
-    let friendRequestsWithFriend = await Promise.all(
+    const friendRequestsWithFriend = await Promise.all(
       friendRequests.map(async (fr) => {
-        let _id = fr.sender;
-        if (_id == req.session.userId) _id = fr.receiver;
-        const friend = await User.findOne({ where: { _id } });
+        const { senderId } = fr;
+        const friendRole = senderId === userId ? "receiver" : "sender";
 
         return {
           friendRequest: fr,
-          friend: friend as User,
+          friendRole,
         };
       })
     );
 
     if (searchName) {
-      friendRequestsWithFriend = friendRequestsWithFriend.filter(
-        (f) =>
-          f.friend.username.toLowerCase().indexOf(searchName.toLowerCase()) !=
-          -1
-      );
+      return friendRequestsWithFriend.filter(
+        (f) => (f.friendRequest[f.friendRole as keyof FriendRequest] as User)
+          .username.toLowerCase().indexOf(searchName.toLowerCase()) !== -1
+      ).slice(0, 20);
     }
+
     return friendRequestsWithFriend.slice(0, 20);
   }
 
@@ -243,98 +219,45 @@ export class FriendRequestResolver {
   async getSuggestedFriends(
     @Ctx() ctx: MyContext
   ): Promise<FriendSuggestion[]> {
-    let myNextFriendsWithMutualCount: FriendSuggestion[] = [];
 
-    const myFriends = await this.getUserFriendRequests(ctx, 50);
-
-    //get friends of my friends
-    if (myFriends.friendRequestsWithFriends.length > 0) {
-      let friendsOfMyFriends: FriendRequestWithFriend[] = [];
-      for (const friend of myFriends.friendRequestsWithFriends) {
-        const possibleFriends = await this.getUserFriendRequests(
-          ctx,
-          50,
-          friend.friend._id
-        );
-        friendsOfMyFriends = friendsOfMyFriends.concat(
-          possibleFriends.friendRequestsWithFriends
-        );
-      }
-
-      //check if there is no request in-progress
-      const realUnknownUsers = await Promise.all(
-        friendsOfMyFriends.map(async (user) => {
-          const request = await this.getFriendRequest(ctx, user.friend._id);
-          if (request.friendRequest) {
-            return false;
-          } else {
-            return true;
-          }
-        })
-      );
-      const a = friendsOfMyFriends.filter(
-        (_v, index) => realUnknownUsers[index]
-      );
-
-      for (const myNextFriend of a) {
-        if (
-          //filter out my friends from my possible new friends
-          myFriends.friendRequestsWithFriends.find(
-            (friend) => friend.friend._id == myNextFriend.friend._id
-          )
-        ) {
-          continue;
-        }
-        //filter out me from my possible new friends
-        if (myNextFriend.friend._id == ctx.req.session.userId) {
-          continue;
-        }
-
-        const mutualFriends = await this.getMutualFriendsCount(
-          ctx.req.session.userId!,
-          myNextFriend.friend._id
-        );
-
-        myNextFriendsWithMutualCount.push({
-          friend: myNextFriend.friend,
-          mutual: mutualFriends,
-        });
-      }
-    }
-
-    //get completely unknown users
-    const unknownUsers = await getConnection()
-      .getRepository(User)
-      .createQueryBuilder()
-      .where("_id != :me", { me: ctx.req.session.userId })
-      .limit(20)
-      .getMany();
-
-    const realUnknownUsers = await Promise.all(
-      unknownUsers.map(async (user) => {
-        const request = await this.getFriendRequest(ctx, user._id);
-        if (request.friendRequest) {
-          return false;
-        } else {
-          return true;
-        }
-      })
-    );
-    const a = unknownUsers.filter((_v, index) => realUnknownUsers[index]);
-    const b = a.map((friend) => ({ friend, mutual: 0 }));
-
-    //push only those who are not in the output array
-    b.forEach((unknown) => {
-      if (
-        !myNextFriendsWithMutualCount.find(
-          (nextFriend) => nextFriend.friend._id == unknown.friend._id
-        )
-      ) {
-        myNextFriendsWithMutualCount.push(unknown);
-      }
+    const userId = ctx.req.session.userId as number;
+    const acceptedFriendRequests = await FriendRequest.find({
+      where: [
+        { senderId: userId, status: "accepted"},
+        { receiverId: userId, status: "accepted"},
+      ],
+      take: 20,
     });
 
-    return myNextFriendsWithMutualCount;
+    const friendsIds = acceptedFriendRequests.map((friend) => friend.senderId === userId ? friend.receiverId : friend.senderId);
+
+    const possibleFriends = await getConnection()
+      .getRepository(FriendRequest)
+      .createQueryBuilder()
+      .where(
+        new Brackets((qb) => {
+          qb.where("senderId IN (:...friendsIds) AND status = 'accepted'", { friendsIds })
+            .orWhere("receiverId IN (:...friendsIds) AND status = 'accepted'", { friendsIds });
+        })
+      )
+      .andWhere("senderId NOT IN (...:friendsIds) AND receiverId NOT IN (...:friendsIds)", { friendsIds })
+      .andWhere("senderId!= :me OR receiverId != :me", { me: userId })
+      .getMany();
+
+    const possibleFriendsWithMutualCount = await Promise.all(
+      possibleFriends.map(async (possibleFriend) => {
+        const friendId = friendsIds.includes(possibleFriend.senderId) ? possibleFriend.receiverId : possibleFriend.senderId;
+        const friend = await User.findOne({_id: friendId}) as User;
+        const mutual = await this.getMutualFriendsCount(userId, friendId);
+
+        return {
+          friend,
+          mutual,
+        };
+      })
+    );
+
+    return possibleFriendsWithMutualCount;
   }
 
   @Query(() => [FriendRequestWithFriend])
@@ -342,25 +265,16 @@ export class FriendRequestResolver {
   async getInProgressFriendRequests(
     @Ctx() { req }: MyContext
   ): Promise<FriendRequestWithFriend[]> {
-    const requests = await getConnection()
-      .getRepository(FriendRequest)
-      .createQueryBuilder()
-      .where("receiver = :me", { me: req.session.userId })
-      .andWhere("status like :progress", { progress: "in-progress" })
-      .getMany();
+    const userId = req.session.userId;
+    const requests = await FriendRequest.find({
+      where: { receiverId: userId, status: "in-progress" },
+      relations: ["sender", "receiver"],
+    });
 
-    let friendRequestsWithFriend = await Promise.all(
-      requests.map(async (fr) => {
-        let _id = fr.sender;
-        const friend = await User.findOne({ where: { _id } });
-
-        return {
-          friendRequest: fr,
-          friend: friend as User,
-        };
-      })
-    );
-    return friendRequestsWithFriend;
+    return requests.map((request) => ({
+      friendRequest: request,
+      friendRole: "sender",
+    }));
   }
 
   @Query(() => Int)
@@ -368,26 +282,17 @@ export class FriendRequestResolver {
   async friendCount(
     @Ctx() { req }: MyContext,
     @Arg("userId", () => Int, { nullable: true }) userId?: number
-  ) {
+  ): Promise<number> {
     //if userId is not specified, it means that we want to take requests of a logged user
-    let id: number = req.session.userId as number;
-    if (userId) {
-      id = userId;
-    }
+    const id = userId || req.session.userId;
 
-    const count = await getConnection()
-      .getRepository(FriendRequest)
-      .createQueryBuilder()
-      .where(
-        new Brackets((qb) => {
-          qb.where("sender = :userId", { userId: id }).orWhere(
-            "receiver = :userId",
-            { userId: id }
-          );
-        })
-      )
-      .andWhere("status like :progress", { progress: "accepted" })
-      .getCount();
+    const count = await FriendRequest.count({
+      where: [{
+        senderId: id, status: "accepted",
+      }, {
+        receiverId: id, status: "accepted",
+      }]
+    });
 
     return count;
   }
@@ -398,14 +303,15 @@ export class FriendRequestResolver {
     @Ctx() { req }: MyContext,
     @Arg("receiverId", () => Int) receiverId: number
   ): Promise<boolean> {
-    if (req.session.userId == receiverId) {
+    const userId = req.session.userId;
+    if (userId == receiverId) {
       //when user tries to send a friend request to himself
       return false;
     }
 
     await FriendRequest.create({
-      sender: req.session.userId,
-      receiver: receiverId,
+      senderId: userId,
+      receiverId,
       status: "in-progress",
     }).save();
 
@@ -418,18 +324,11 @@ export class FriendRequestResolver {
     @Ctx() { req }: MyContext,
     @Arg("userId", () => Int) userId: number
   ): Promise<boolean> {
-    const result = await getConnection()
-      .createQueryBuilder()
-      .update(FriendRequest)
-      .set({ status: "accepted" })
-      .where(
-        "(sender = :me AND receiver = :user) OR (sender = :user AND receiver = :me)",
-        {
-          me: req.session.userId,
-          user: userId,
-        }
-      )
-      .execute();
+    const id = req.session.userId as number;
+    const result = await FriendRequest.update(
+      { senderId: In([id, userId]), receiverId: In([id, userId]) },
+      { status: "accepted" }
+    );
 
     return result.affected == 1;
   }
@@ -439,19 +338,9 @@ export class FriendRequestResolver {
   async removeFriendRequest(
     @Ctx() { req }: MyContext,
     @Arg("userId", () => Int) userId: number
-  ) {
-    const result = await getConnection()
-      .createQueryBuilder()
-      .delete()
-      .from(FriendRequest)
-      .where(
-        "(sender = :me AND receiver = :user) OR (sender = :user AND receiver = :me)",
-        {
-          me: req.session.userId,
-          user: userId,
-        }
-      )
-      .execute();
+  ): Promise<boolean> {
+    const id = req.session.userId as number;
+    const result = await FriendRequest.delete({ senderId: In([id, userId]), receiverId: In([id, userId]) });
 
     return result.affected == 1;
   }

@@ -1,5 +1,17 @@
-import { Arg, Ctx, Field, FieldResolver, Int, Mutation, ObjectType, Query, Resolver, Root, UseMiddleware } from "type-graphql";
-import { getConnection } from "typeorm";
+import {
+  Arg,
+  Ctx,
+  Field,
+  FieldResolver,
+  Int,
+  Mutation,
+  ObjectType,
+  Query,
+  Resolver,
+  Root,
+  UseMiddleware
+} from "type-graphql";
+import { FindConditions, LessThan } from "typeorm";
 import { Comment } from "../entities/Comment";
 import { User } from "../entities/User";
 import { isAuth } from "../middleware/isAuth";
@@ -8,10 +20,10 @@ import { MyContext } from "../types";
 @ObjectType()
 class PaginatedComments {
   @Field(() => [Comment])
-  comments: Comment[];
+    comments: Comment[];
 
   @Field()
-  hasMore: boolean;
+    hasMore: boolean;
 }
 
 @Resolver(Comment)
@@ -32,20 +44,17 @@ export class CommentResolver {
     const realLimit = Math.min(50, limit);
     const reaLimitPlusOne = realLimit + 1;
 
-    const replacements: any[] = [postId, reaLimitPlusOne];
+    const where: FindConditions<Comment> = { postId };
 
     if (cursor) {
-      replacements.push(new Date(parseInt(cursor)));
+      where.createdAt = LessThan(new Date(parseInt(cursor)));
     }
 
-    const comments = await getConnection().query(
-      `
-      select c.*
-    from comment c
-    where c."postId" = $1 ${cursor ? ` and c."createdAt" < $3` : ``}
-    order by c."createdAt" DESC
-    limit $2
-    `, replacements)
+    const comments = await Comment.find({
+      where,
+      take: reaLimitPlusOne,
+      order: {createdAt: "DESC"}
+    });
 
     return {
       comments: comments.slice(0, realLimit),
@@ -56,16 +65,8 @@ export class CommentResolver {
   @Query(()=>Int)
   async commentCount(
     @Arg("postId", ()=>Int) postId: number
-  ): Promise<number>{
-    const result = await getConnection().query(
-      `
-        select count(_id)
-        from comment
-        where "postId" = $1;
-      `, [postId]
-    )
-
-    const count = parseInt(result[0].count);
+  ): Promise<number> {
+    const count = await Comment.count({ where: { postId }});
 
     return count;
   }
@@ -79,9 +80,9 @@ export class CommentResolver {
     @Ctx() {req}: MyContext
   ): Promise<Comment> {
     return Comment.create({
-        text,
-        postId,
-        creatorId: req.session.userId
+      text,
+      postId,
+      creatorId: req.session.userId
     }).save();
   }
 }

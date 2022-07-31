@@ -18,75 +18,75 @@ import { User } from "./User";
 export class Post extends BaseEntity {
   @Field(() => Int)
   @PrimaryGeneratedColumn()
-  _id!: number;
+    _id!: number;
 
   @OneToMany(() => Reaction, reaction=>reaction.post)
-  reactions: Reaction[];
+    reactions: Reaction[];
 
   @OneToMany(()=>Comment, comment=>comment.post)
-  comments: Comment[]
+    comments: Comment[];
 
   @Field()
   @Column()
-  creatorId: number;
+    creatorId: number;
 
   @Field(()=>User)
   @ManyToOne(() => User, (user) => user.posts)
-  creator: User;
+    creator: User;
 
   @Field()
   @Column()
-  text!: string;
+    text!: string;
 
   @Field()
   @Column({ nullable: true, default: null })
-  feeling!: string;
+    feeling!: string;
 
   @Field()
   @Column({ nullable: true, default: null })
-  activity!: string;
+    activity!: string;
 
   @Field()
   @Column({nullable: true})
-  imageId!: string;
+    imageId!: string;
 
   @Field(()=>[Int])
   @Column({type: "int", array: true})
-  tagged: number[]
+    tagged: number[];
 
   @Field()
   @Column({ type: "int", default: 0 })
-  like!: number;
+    like!: number;
 
   @Field()
   @Column({ type: "int", default: 0 })
-  love!: number;
+    love!: number;
 
   @Field()
   @Column({ type: "int", default: 0 })
-  care!: number;
+    care!: number;
 
   @Field()
   @Column({ type: "int", default: 0 })
-  haha!: number;
+    haha!: number;
 
   @Field()
   @Column({ type: "int", default: 0 })
-  wow!: number;
+    wow!: number;
 
   @Field()
   @Column({ type: "int", default: 0 })
-  sad!: number;
+    sad!: number;
 
   @Field()
   @Column({ type: "int", default: 0 })
-  angry!: number;
+    angry!: number;
 
   @Field(() => String)
   @CreateDateColumn()
-  createdAt: Date;
+    createdAt: Date;
 
   @Field(() => String)
   @UpdateDateColumn()
-  updatedAt: Date;
+    updatedAt: Date;
 }
