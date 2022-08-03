@@ -11,7 +11,7 @@ import {
   Root,
   UseMiddleware
 } from "type-graphql";
-import { FindConditions, LessThan } from "typeorm";
+import { LessThan, FindOptionsWhere } from "typeorm";
 import { Comment } from "../entities/Comment";
 import { User } from "../entities/User";
 import { isAuth } from "../middleware/isAuth";
@@ -44,7 +44,7 @@ export class CommentResolver {
     const realLimit = Math.min(50, limit);
     const reaLimitPlusOne = realLimit + 1;
 
-    const where: FindConditions<Comment> = { postId };
+    const where: FindOptionsWhere<Comment> = { postId };
 
     if (cursor) {
       where.createdAt = LessThan(new Date(parseInt(cursor)));

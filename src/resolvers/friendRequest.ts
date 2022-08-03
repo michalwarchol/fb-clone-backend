@@ -9,7 +9,7 @@ import {
   Resolver,
   UseMiddleware,
 } from "type-graphql";
-import { getConnection, FindManyOptions, In, Brackets } from "typeorm";
+import { DataSource, FindManyOptions, In, Brackets } from "typeorm";
 import { FriendRequest } from "../entities/FriendRequest";
 import { User } from "../entities/User";
 import { isAuth } from "../middleware/isAuth";
@@ -56,12 +56,12 @@ class PaginatedRequests {
 
 @Resolver(FriendRequest)
 export class FriendRequestResolver {
-  async getMutualFriendsCount(me: number, userId: number): Promise<number> {
+  async getMutualFriendsCount(dataSource: DataSource, me: number, userId: number): Promise<number> {
     if (me == userId) {
       return 0;
     }
 
-    const mutualFriends = await getConnection()
+    const mutualFriends = await dataSource
       .getRepository(FriendRequest)
       .createQueryBuilder("request")
       .where(new Brackets((qb) => {
@@ -98,7 +98,7 @@ export class FriendRequestResolver {
   @Query(() => PaginatedRequests)
   @UseMiddleware(isAuth)
   async getUserFriendRequests(
-    @Ctx() { req }: MyContext,
+    @Ctx() { req, dataSource }: MyContext,
     @Arg("limit", () => Int) limit: number,
     @Arg("userId", () => Int, { nullable: true }) userId?: number,
     @Arg("skip", () => Int, { nullable: true }) skip?: number
@@ -135,6 +135,7 @@ export class FriendRequestResolver {
     let mutualFriends = 0;
     if (userId) {
       mutualFriends = await this.getMutualFriendsCount(
+        dataSource,
         req.session.userId as number,
         userId
       );
@@ -219,8 +220,8 @@ export class FriendRequestResolver {
   async getSuggestedFriends(
     @Ctx() ctx: MyContext
   ): Promise<FriendSuggestion[]> {
-
-    const userId = ctx.req.session.userId as number;
+    const { req, dataSource} = ctx;
+    const userId = req.session.userId as number;
     const acceptedFriendRequests = await FriendRequest.find({
       where: [
         { senderId: userId, status: "accepted"},
@@ -231,7 +232,7 @@ export class FriendRequestResolver {
 
     const friendsIds = acceptedFriendRequests.map((friend) => friend.senderId === userId ? friend.receiverId : friend.senderId);
 
-    const possibleFriends = await getConnection()
+    const possibleFriends = await dataSource
       .getRepository(FriendRequest)
       .createQueryBuilder()
       .where(
@@ -247,8 +248,8 @@ export class FriendRequestResolver {
     const possibleFriendsWithMutualCount = await Promise.all(
       possibleFriends.map(async (possibleFriend) => {
         const friendId = friendsIds.includes(possibleFriend.senderId) ? possibleFriend.receiverId : possibleFriend.senderId;
-        const friend = await User.findOne({_id: friendId}) as User;
-        const mutual = await this.getMutualFriendsCount(userId, friendId);
+        const friend = await User.findOne({where: { _id: friendId }}) as User;
+        const mutual = await this.getMutualFriendsCount(dataSource, userId, friendId);
 
         return {
           friend,
