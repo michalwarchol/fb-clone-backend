@@ -1,12 +1,15 @@
 BRANCH=$(git rev-parse --abbrev-ref HEAD)
 CHANGED=$(git diff-index --name-only HEAD --)
+SUBSTRING=$(echo $BRANCH | cut -b 1-4)
+
 if [ ! -z "${CHANGED}" ]; then
   echo "Commit your chages before bumping!";
-  #return;
+  return;
 fi;
 
-if [ $(echo $INPUT| cut -d'_' -f 2) == "feat" ]
+if [ "${SUBSTRING}" = "feat" ]
 then
+  echo $(echo $BRANCH | cut -b 1-4)
     yarn version --minor;
 else
     yarn version --patch;
