@@ -56,8 +56,10 @@ export class ReactionResolver {
     const userId = req.session.userId;
 
     const isInDb = await Reaction.findOne({
-      postId,
-      userId: req.session.userId,
+      where: {
+        postId,
+        userId: req.session.userId,
+      }
     });
 
     if(!isInDb) {
@@ -88,10 +90,12 @@ export class ReactionResolver {
   async reaction(
     @Arg("postId", () => Int) postId: number,
     @Ctx() { req }: MyContext
-  ): Promise<Reaction | undefined> {
+  ): Promise<Reaction | null> {
     const reaction = await Reaction.findOne({
-      postId,
-      userId: req.session.userId,
+      where: {
+        postId,
+        userId: req.session.userId,
+      }
     });
     return reaction;
   }

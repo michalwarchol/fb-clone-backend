@@ -1,4 +1,4 @@
-import { FileUpload, GraphQLUpload } from "graphql-upload";
+import { GraphQLUpload, Upload } from "graphql-upload";
 import {
   Arg,
   Ctx,
@@ -11,7 +11,7 @@ import {
   Root,
   UseMiddleware,
 } from "type-graphql";
-import { Brackets, getConnection } from "typeorm";
+import { Brackets } from "typeorm";
 import { v4 } from "uuid";
 import { FriendRequest } from "../entities/FriendRequest";
 import { Story } from "../entities/Story";
@@ -48,11 +48,11 @@ export class StoryResolver {
 
   @Query(() => [Story])
   @UseMiddleware(isAuth)
-  async getRecentStories(@Ctx() { req }: MyContext): Promise<Story[]> {
+  async getRecentStories(@Ctx() { req, dataSource }: MyContext): Promise<Story[]> {
     const id = req.session.userId;
     const date = new Date(new Date().setDate(new Date().getDate() - 3));
 
-    const stories = await getConnection()
+    const stories = await dataSource
       .getRepository(Story)
       .createQueryBuilder()
       .where((sq) => {
@@ -98,21 +98,21 @@ export class StoryResolver {
   async createStory(
     @Ctx() { req, s3 }: MyContext,
     @Arg("input", () => StoryInput) input: StoryInput,
-    @Arg("image", () => GraphQLUpload, { nullable: true }) image?: FileUpload
+    @Arg("image", () => GraphQLUpload, { nullable: true }) image?: Upload
   ): Promise<Story> {
     const userId = req.session.userId as number;
-    const newStory = { ...new Story(), ...input, userId };
+    const newStory = Story.create({ ...input, userId });
     if (image) {
       newStory.imageId = v4();
       await s3
         .upload({
           Bucket: process.env.AWS_BUCKET_NAME,
           Key: newStory.imageId,
-          Body: image.createReadStream(),
+          Body: image.file?.createReadStream(),
         })
         .promise();
     }
 
-    return Story.create(newStory).save();
+    return newStory.save();
   }
 }

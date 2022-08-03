@@ -16,8 +16,7 @@ import {
 import bcrypt from "bcrypt";
 import { COOKIE_NAME } from "../constants";
 import { v4 } from "uuid";
-import { getConnection } from "typeorm";
-import { FileUpload, GraphQLUpload } from "graphql-upload";
+import { Upload, GraphQLUpload } from "graphql-upload";
 
 @InputType()
 class Credentials {
@@ -91,13 +90,13 @@ export class UserResolver {
   @Query(() => User, { nullable: true })
   async getUserById(
     @Arg("id", () => Int) id: number
-  ): Promise<User | undefined> {
-    return User.findOne({ _id: id });
+  ): Promise<User | null> {
+    return User.findOne({ where: { _id: id }});
   }
 
   @Query(() => [SearchedUser])
   async searchUsersByUsername(
-    @Ctx() { req, s3 }: MyContext,
+    @Ctx() { req, s3, dataSource }: MyContext,
     @Arg("username", () => String) username: string
   ): Promise<SearchedUser[]> {
     const userId = req.session.userId;
@@ -106,7 +105,7 @@ export class UserResolver {
       return [];
     }
 
-    const searchedUsers = await getConnection()
+    const searchedUsers = await dataSource
       .getRepository(User)
       .createQueryBuilder()
       .where("LOWER(username) like LOWER(:username) AND _id != :id", {
@@ -137,11 +136,11 @@ export class UserResolver {
   @Mutation(() => String)
   async uploadImage(
     @Ctx() { req, s3 }: MyContext,
-    @Arg("image", () => GraphQLUpload, { nullable: true }) image: FileUpload,
+    @Arg("image", () => GraphQLUpload, { nullable: true }) image: Upload,
     @Arg("avatarOrBanner", () => String) avatarOrBanner: "avatar" | "banner"
   ): Promise<string> {
     const userId = req.session.userId;
-    const user = await User.findOne({ _id: userId });
+    const user = await User.findOne({ where: { _id: userId }});
 
     const imageId = avatarOrBanner === "avatar" ? user?.avatarId : user?.bannerId;
 
@@ -156,7 +155,7 @@ export class UserResolver {
     await s3.upload({
       Bucket: process.env.AWS_BUCKET_NAME,
       Key: newImageId,
-      Body: image.createReadStream(),
+      Body: image.file?.createReadStream(),
     })
       .promise();
 
@@ -178,7 +177,7 @@ export class UserResolver {
       return null;
     }
 
-    const user = await User.findOne({ _id: userId });
+    const user = await User.findOne({ where: { _id: userId }});
 
     const avatar = !!user?.avatarId && await s3.getObject({
       Bucket: process.env.AWS_BUCKET_NAME,

@@ -11,7 +11,7 @@ import session from "express-session";
 import connectRedis from "connect-redis";
 import { MyContext } from "./types";
 import cors from "cors";
-import {createConnection} from "typeorm";
+import { DataSource } from "typeorm";
 import {S3} from "aws-sdk";
 import { User } from "./entities/User";
 import { Post } from "./entities/Post";
@@ -28,16 +28,22 @@ import { NotificationResolver } from "./resolvers/notification";
 import { Notification } from "./entities/Notification";
 import { createUserLoader } from "./utils/createUserLoader";
 import path from "path";
+import { 
+  ApolloServerPluginLandingPageGraphQLPlayground,
+  ApolloServerPluginLandingPageDisabled,
+} from "apollo-server-core";
 
 const main = async () => {
 
-  await createConnection({
+  const dataSource = new  DataSource({
     type: "postgres",
     url: process.env.DATABASE_URL,
     logging: true,
     migrations: [path.join(__dirname, "./migrations/*")],
-    entities: [Post, User, Reaction, Comment, FriendRequest, Story, Notification]
+    entities: [Post, User, Reaction, Comment, FriendRequest, Story, Notification],
   });
+
+  await dataSource.initialize();
 
   const app = express();
 
@@ -84,9 +90,16 @@ const main = async () => {
       resolvers: [PostResolver, UserResolver, ReactionResolver, CommentResolver, FriendRequestResolver, StoryResolver, NotificationResolver],
       validate: false,
     }),
-    context: ({ req, res }): MyContext => ({ req, res, redis, s3, userLoader: createUserLoader() }),
-    uploads: false
+    context: ({ req, res }): MyContext => ({ req, res, redis, s3, userLoader: createUserLoader(), dataSource }),
+    csrfPrevention: true,
+    plugins: [
+      process.env.NODE_ENV === "production"
+        ? ApolloServerPluginLandingPageDisabled()
+        : ApolloServerPluginLandingPageGraphQLPlayground(),
+    ],
   });
+
+  await apolloServer.start();
 
   apolloServer.applyMiddleware({
     app,

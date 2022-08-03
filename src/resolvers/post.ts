@@ -16,9 +16,9 @@ import {
 } from "type-graphql";
 import { MyContext } from "src/types";
 import { isAuth } from "../middleware/isAuth";
-import { LessThan, FindConditions } from "typeorm";
+import { LessThan, FindOptionsWhere } from "typeorm";
 import { v4 } from "uuid";
-import { FileUpload, GraphQLUpload } from "graphql-upload";
+import { GraphQLUpload, Upload } from "graphql-upload";
 
 @InputType()
 class PostInput {
@@ -61,10 +61,10 @@ export class PostResolver {
     const realLimit = Math.min(50, limit);
     const realLimitPlusOne = realLimit + 1;
 
-    const where: FindConditions<Post> = {};
+    const where: FindOptionsWhere<Post> = {};
 
     if(cursor){
-      where.createdAt = LessThan(cursor);
+      where.createdAt = LessThan(new Date(cursor));
     }
     
     if(creatorId){
@@ -84,8 +84,8 @@ export class PostResolver {
   }
 
   @Query(() => Post, { nullable: true })
-  async post(@Arg("id", () => Int) id: number): Promise<Post | undefined> {
-    return Post.findOne({ _id: id });
+  async post(@Arg("id", () => Int) id: number): Promise<Post | null> {
+    return Post.findOne({ where: { _id: id }});
   }
 
   @Mutation(() => Post)
@@ -93,16 +93,15 @@ export class PostResolver {
   async createPost(
     @Ctx() { req, s3 }: MyContext,
     @Arg("input") input: PostInput,
-    @Arg("image", () => GraphQLUpload, {nullable: true}) image: FileUpload
+    @Arg("image", () => GraphQLUpload, {nullable: true}) image: Upload
   ): Promise<Post> {
-    let imageId = null;
+    const imageId = v4();
     if (image) {
-      imageId = v4();
       await s3
         .upload({
           Bucket: process.env.AWS_BUCKET_NAME,
           Key: imageId,
-          Body: image.createReadStream()
+          Body: image.file?.createReadStream()
         })
         .promise();
     }
@@ -122,7 +121,7 @@ export class PostResolver {
     @Arg("id") id: number,
     @Arg("text", () => String, { nullable: true }) text: string
   ): Promise<Post | null> {
-    const post = await Post.findOne({ _id: id });
+    const post = await Post.findOne({ where: { _id: id }});
     if (!post) {
       return null;
     }
